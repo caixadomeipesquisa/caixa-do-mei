@@ -211,3 +211,5 @@ nav.tabs { position: sticky; bottom: 0; }
   .print-area, .print-area * { visibility: visible; }
   .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; color: #000; }
 }
+
+.warn-note { background: color-mix(in srgb, #d9a400 14%, transparent); border-radius: 10px; padding: 8px 10px; margin: 8px 0; }

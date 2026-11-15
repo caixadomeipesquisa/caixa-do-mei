@@ -1,6 +1,7 @@
 // Sobe a fila local para o Supabase e baixa os dados do usuário ao entrar.
 import { db, type Tx, type Closing, type Settings } from './db';
 import { supabase } from './supabase';
+import { setRules, type LimitRule } from './mei';
 
 let running = false;
 
@@ -74,6 +75,15 @@ export async function pullAll() {
       opened_month: pr.data.opened_month ?? null,
     });
   }
+}
+
+/** Baixa a tabela de limites do MEI (leitura pública). Sem internet, fica a do aparelho. */
+export async function refreshRules(): Promise<boolean> {
+  if (!supabase) return false;
+  const { data, error } = await supabase.from('mei_rules').select('from_year, limit_cents, source');
+  if (error || !data?.length) return false;
+  setRules(data.map((r) => ({ from_year: Number(r.from_year), limit_cents: Number(r.limit_cents), source: String(r.source) })) as LimitRule[]);
+  return true;
 }
 
 export function startAutoSync() {

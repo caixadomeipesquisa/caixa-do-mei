@@ -18,6 +18,13 @@ Contato do projeto: caixadomeipesquisa@gmail.com
 
 Fora da versão 0.1, de propósito: IA, integração bancária, nota fiscal, várias empresas.
 
+## Independente do ano
+
+- O ano vem sempre da data do aparelho: relatório mensal, DASN (ano anterior), limite e lembretes funcionam em 2026, 2027 ou depois sem mudar código.
+- O teto do MEI vem de uma tabela de vigência (`public.mei_rules`: a partir de que ano, valor, lei). O app lê a tabela ao abrir e guarda uma cópia no aparelho; sem internet, usa a tabela padrão de `lib/mei.ts`.
+- Lei nova: insira uma linha em `mei_rules` (ex.: `insert into public.mei_rules values (2030, 15000000, 'LC xxx/20xx')`). Não precisa publicar o app de novo.
+- Se o MEI começou a usar o app no meio do ano, a declaração anual mostra o aviso de que faltam os meses anteriores, em vez de apresentar um total incompleto como se fosse o do ano.
+
 ## Stack
 
 | Camada | Escolha |
@@ -47,7 +54,7 @@ Tudo com a conta do projeto (caixadomeipesquisa@gmail.com), separada de qualquer
 
 ### 2. Supabase (plano gratuito)
 1. Crie a organização e o projeto `caixa-do-mei`, região **South America (São Paulo)**.
-2. SQL Editor: rode `supabase/migrations/0001_init.sql` e depois `supabase/migrations/0003_obrigacoes.sql`.
+2. SQL Editor: rode `supabase/migrations/0001_init.sql`, depois `0003_obrigacoes.sql` e `0004_mei_rules.sql`.
 3. Authentication › Providers › Email: deixe ligado e **desligue "Confirm email"**; em Email Templates › Magic Link, use o código `{{ .Token }}` no corpo (o app pede o código de 6 números).
 4. Authentication › URL Configuration: Site URL = endereço final (ex.: `https://caixadomei.com.br`).
 5. Gere as chaves de push: `npx web-push generate-vapid-keys`.

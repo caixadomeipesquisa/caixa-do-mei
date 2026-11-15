@@ -1,9 +1,40 @@
-// Regras do MEI usadas pelo app. Conferir a cada ano: valores mudam por lei.
-// Limite anual: R$ 81 mil (até 2026); LC 238/2026: R$ 110 mil em 2027 e R$ 140 mil a partir de 2028.
+// Regras do MEI usadas pelo app. Nada depende de um ano fixo: o ano vem da data do aparelho
+// e o teto vem de uma tabela de vigência ("a partir de"). A tabela padrão abaixo vale sem internet;
+// a tabela public.mei_rules no Supabase (migração 0004) a substitui, sem precisar publicar o app de novo.
 import type { Tx, Activity, Settings } from './db';
 
-export const LIMIT_CENTS: Record<number, number> = { 2025: 8100000, 2026: 8100000, 2027: 11000000, 2028: 14000000 };
-export const limitFor = (year: number) => LIMIT_CENTS[year] ?? (year > 2028 ? LIMIT_CENTS[2028] : LIMIT_CENTS[2026]);
+export interface LimitRule { from_year: number; limit_cents: number; source: string }
+
+export const DEFAULT_RULES: LimitRule[] = [
+  { from_year: 2018, limit_cents: 8100000, source: 'LC 155/2016' },
+  { from_year: 2027, limit_cents: 11000000, source: 'LC 238/2026' },
+  { from_year: 2028, limit_cents: 14000000, source: 'LC 238/2026' },
+];
+
+const RULES_KEY = 'caixa-mei-rules';
+let rules: LimitRule[] = DEFAULT_RULES;
+try {
+  const c = typeof localStorage !== 'undefined' ? localStorage.getItem(RULES_KEY) : null;
+  if (c) { const r = JSON.parse(c) as LimitRule[]; if (Array.isArray(r) && r.length) rules = r; }
+} catch { /* sem cache: usa a tabela padrão */ }
+
+/** Troca a tabela (vinda do Supabase) e guarda no aparelho. */
+export function setRules(r: LimitRule[]) {
+  const ok = r.filter((x) => Number.isInteger(x.from_year) && x.limit_cents > 0);
+  if (!ok.length) return;
+  rules = ok.sort((a, b) => a.from_year - b.from_year);
+  try { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); } catch { /* sem armazenamento */ }
+}
+
+const sorted = () => [...rules].sort((a, b) => a.from_year - b.from_year);
+/** Regra vigente no ano: a última com from_year <= ano (anos anteriores à tabela usam a primeira). */
+export const ruleFor = (year: number) => sorted().filter((r) => r.from_year <= year).pop() ?? sorted()[0];
+export const limitFor = (year: number) => ruleFor(year).limit_cents;
+/** Próxima mudança de teto já prevista em lei depois do ano informado, se houver. */
+export const nextChange = (year: number) => {
+  const cur = limitFor(year);
+  return sorted().find((r) => r.from_year > year && r.limit_cents !== cur) ?? null;
+};
 
 /** Limite do ano; no ano de abertura, proporcional aos meses de atividade (do mês de abertura a dezembro). */
 export function yearLimit(year: number, openedMonth: number | null) {
@@ -50,3 +81,16 @@ export const monthName = (ym: string, cap = false) => { const n = MONTHS[Number(
 export const prevMonth = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; };
 
 export const PORTAL_SIMPLES = 'https://www8.receita.fazenda.gov.br/SimplesNacional/';
+
+/**
+ * Quanto do ano os registros do app cobrem, para não apresentar como completo um total que não é.
+ * 'none': o app começou depois do ano; 'partial': começou no meio do ano e a receita anterior não foi informada.
+ */
+export function coverage(txs: Tx[], year: number, s: Settings): { kind: 'full' | 'partial' | 'none'; since: string | null } {
+  const days = txs.filter((t) => !t.deleted).map((t) => t.day).sort();
+  const first = days[0] ?? null;
+  if (!first || first.slice(0, 4) > String(year)) return { kind: 'none', since: first ? first.slice(0, 7) : null };
+  if (first.slice(0, 4) < String(year)) return { kind: 'full', since: first.slice(0, 7) };
+  const informed = s.limit_year === year && (s.revenue_before_cents > 0 || (!!s.opened_month && Number(first.slice(5, 7)) <= s.opened_month));
+  return { kind: first.slice(5, 7) === '01' || informed ? 'full' : 'partial', since: first.slice(0, 7) };
+}

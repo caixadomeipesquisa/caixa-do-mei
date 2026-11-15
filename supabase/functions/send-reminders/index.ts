@@ -99,9 +99,9 @@ Deno.serve(async () => {
       const year = Number(now.day.slice(0, 4)) - 1;
       const { data: prof } = await supabase.from('profiles').select('dasn_done').eq('id', p.id).maybeSingle();
       if (!(prof?.dasn_done ?? []).includes(year) && !(await alreadySent(p.id, 'dasn', now.day))) {
-        await push(p.id, 'Declaração anual do MEI', `Entregue a DASN-SIMEI de ${year} até 31 de maio. Os números estão prontos no app.`);
+        await push(p.id, 'Declaração anual do MEI', `Entregue a DASN-SIMEI de ${year} até 31 de maio. Confira os números no app.`);
         const { data: u } = await supabase.auth.admin.getUserById(p.id);
-        if (u.user?.email) await email(u.user.email, 'Declaração anual do MEI até 31 de maio', `Lembrete do Caixa do MEI: entregue a DASN-SIMEI de ${year} até 31 de maio. Os números já estão prontos no app, em Mais › Obrigações do MEI.`);
+        if (u.user?.email) await email(u.user.email, 'Declaração anual do MEI até 31 de maio', `Lembrete do Caixa do MEI: entregue a DASN-SIMEI de ${year} até 31 de maio. Confira os números no app, em Mais › Obrigações do MEI.`);
         sent++;
       }
     }

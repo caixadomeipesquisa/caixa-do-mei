@@ -6,10 +6,10 @@ import {
   defaultSettings, type Settings, type Tx, type Closing, type Drawer, type TxType,
 } from '@/lib/db';
 import { fmt, fmt0, toCents, today, monthKey } from '@/lib/money';
-import { startAutoSync, syncNow, pullAll } from '@/lib/sync';
+import { startAutoSync, syncNow, pullAll, refreshRules } from '@/lib/sync';
 import { enablePush, pushSupported } from '@/lib/push';
 import { supabase, CONTACT } from '@/lib/supabase';
-import { yearLimit, revenueYear, monthlyReport, annualSummary, ACT_LABEL, monthName, prevMonth, PORTAL_SIMPLES, REVENUE_CATS } from '@/lib/mei';
+import { yearLimit, ruleFor, nextChange, coverage, revenueYear, monthlyReport, annualSummary, ACT_LABEL, monthName, prevMonth, PORTAL_SIMPLES, REVENUE_CATS } from '@/lib/mei';
 import type { Activity } from '@/lib/db';
 
 type Screen = 'welcome' | 'consent' | 'setup' | 'home' | 'add' | 'close' | 'pay' | 'month' | 'more' | 'login' | 'obrig';
@@ -42,6 +42,7 @@ export default function App() {
       setScreen(st.onboarded ? 'home' : 'welcome');
       setReady(true);
       void track('app_open');
+      if (await refreshRules()) await reload();
     })();
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
     const stop = startAutoSync();
@@ -286,7 +287,7 @@ function Home({ s, calc, txs, go, parcel, allTx }: { s: Settings; calc: Calc; tx
         )}
         {dasnDue && (
           <div className="banner warnb">
-            <div><b>Declaração anual (DASN-SIMEI) de {yr - 1}</b><span className="small muted">Prazo: 31 de maio. Os números já estão prontos.</span></div>
+            <div><b>Declaração anual (DASN-SIMEI) de {yr - 1}</b><span className="small muted">Prazo: 31 de maio. {coverage(allTx, yr - 1, s).kind === 'full' ? 'Os números já estão prontos.' : 'Confira o que falta somar.'}</span></div>
             <button className="go" onClick={() => go('obrig')}>Ver</button>
           </div>
         )}
@@ -589,11 +590,14 @@ function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Sc
   const months = Array.from(new Set(txs.filter((t) => !t.deleted).map((t) => t.day.slice(0, 7)))).filter((m) => m < curMonth).sort().reverse().slice(0, 12);
   const [open, setOpen] = useState<string | null>(null);
   const [limOn, setLimOn] = useState(s.track_limit);
-  const [before, setBefore] = useState(s.revenue_before_cents ? String(s.revenue_before_cents / 100) : '');
+  const [before, setBefore] = useState(s.limit_year === yr && s.revenue_before_cents ? String(s.revenue_before_cents / 100) : '');
   const [openedThisYear, setOpenedThisYear] = useState(s.limit_year === yr && !!s.opened_month);
   const [openedMonth, setOpenedMonth] = useState(s.opened_month ?? Number(now.slice(5, 7)));
   const dasnYear = yr - 1;
   const ann = annualSummary(txs, dasnYear, s);
+  const cov = coverage(txs, dasnYear, s);
+  const rule = ruleFor(yr);
+  const nx = nextChange(yr);
   const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'];
   return (
     <>
@@ -655,7 +659,9 @@ function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Sc
         <h3>Declaração anual (DASN-SIMEI) de {dasnYear}</h3>
         <div className="card">
           <p className="small">Entrega até 31 de maio de {yr}, mesmo sem faturamento. Atraso gera multa.</p>
-          <div className="kv"><span>Receita bruta total</span><b className="money">{fmt(ann.total)}</b></div>
+          {cov.kind === 'none' && <p className="small warn-note">Você começou a anotar no app em {cov.since ? monthName(cov.since) : yr}. A declaração de {dasnYear} sai dos seus controles de antes; os totais abaixo ficam zerados.</p>}
+          {cov.kind === 'partial' && cov.since && <p className="small warn-note">O app tem vendas a partir de {monthName(cov.since)}. Some o que faturou antes disso em {dasnYear} para chegar ao total da declaração.</p>}
+          <div className="kv"><span>Receita bruta total{cov.kind === 'partial' ? ' (anotada no app)' : ''}</span><b className="money">{fmt(ann.total)}</b></div>
           <div className="kv"><span>Comércio e indústria</span><b className="money">{fmt(ann.comInd + (ann.before && s.activity !== 'servicos' ? ann.before : 0))}</b></div>
           <div className="kv"><span>Serviços</span><b className="money">{fmt(ann.serv + (ann.before && s.activity === 'servicos' ? ann.before : 0))}</b></div>
           <label className="check" style={{ marginTop: 10 }}><input type="checkbox" checked={s.has_employee} onChange={(e) => onSave({ ...s, has_employee: e.target.checked })} /> Tive empregado no ano</label>
@@ -691,7 +697,7 @@ function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Sc
                   </select>
                 </label>
               )}
-              <p className="small muted">Limite de {yr}: {fmt0(yearLimit(yr, openedThisYear ? openedMonth : null))}{openedThisYear ? ' (proporcional)' : ''}. Em 2027 o teto sobe para R$ 110 mil e, em 2028, para R$ 140 mil (Lei Complementar 238/2026).</p>
+              <p className="small muted">Limite de {yr}: {fmt0(yearLimit(yr, openedThisYear ? openedMonth : null))}{openedThisYear ? ' (proporcional)' : ''}, pela {rule.source}.{nx ? ` Em ${nx.from_year}, o teto passa para ${fmt0(nx.limit_cents)} (${nx.source}).` : ''}</p>
             </div>
           )}
           <button className="btn primary" style={{ marginTop: 12 }} onClick={async () => {

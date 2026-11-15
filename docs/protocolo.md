@@ -27,7 +27,7 @@ Anote o que entra e o que sai, separe o seu salário e feche o caixa: cinco minu
 |---|---|---|
 | Relatório Mensal das Receitas Brutas | Preencher até o dia 20 do mês seguinte e guardar | Soma as vendas anotadas por atividade, com e sem nota, e gera o relatório para imprimir ou salvar |
 | DASN-SIMEI | Até 31 de maio, mesmo sem faturamento | Mostra receita total, comércio e indústria, serviços e empregado; o MEI transmite no portal |
-| Limite anual de faturamento (opcional) | Ano-calendário; R$ 81 mil até 2026, R$ 110 mil em 2027 e R$ 140 mil a partir de 2028 (LC 238/2026); proporcional no ano de abertura | Barra do limite com aviso a partir de 80%, incluindo a receita anterior ao uso do app |
+| Limite anual de faturamento (opcional) | Ano-calendário, pelo teto vigente no ano (em nov/2026: R$ 81 mil até 2026, R$ 110 mil em 2027 e R$ 140 mil a partir de 2028, pela LC 238/2026); proporcional no ano de abertura | Barra do limite com aviso a partir de 80%, incluindo a receita anterior ao uso do app |
 
 ## O que fica de fora, de propósito
 
