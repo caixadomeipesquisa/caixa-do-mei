@@ -1,0 +1,26 @@
+{
+  "name": "caixa-do-mei",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Caixa do MEI: aplicativo web gratuito do protocolo aberto Manter simples (rotina financeira mínima para MEIs).",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "npx serve out",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "dexie": "^4.4.7",
+    "next": "16.4.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.7.0"
+  }
+}

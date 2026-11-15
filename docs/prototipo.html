@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Caixa do MEI – protótipo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Protótipo navegável do Caixa do MEI: moldura de celular no desktop, tela cheia no celular.
+   Duas gavetas: verde = empresa, âmbar = casa. */
+:root {
+  --bg: #e9ece8; --paper: #ffffff; --soft: #f4f6f3; --ink: #18201b; --muted: #5a665e; --line: #d9dfd9;
+  --biz: #1f6b4f; --biz-soft: #e3f1ea; --home: #9a5b00; --home-soft: #fdf1dc;
+  --ok: #1d7a4b; --bad: #b42318; --bad-soft: #fbe7e5;
+  --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --num: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d110f; --paper: #161c19; --soft: #1d2521; --ink: #e5ece7; --muted: #9eaba3; --line: #2b3530;
+    --biz: #6fd0a3; --biz-soft: #17302a; --home: #f0b85a; --home-soft: #33280f;
+    --ok: #59c993; --bad: #ff8a80; --bad-soft: #3a1b1a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d110f; --paper: #161c19; --soft: #1d2521; --ink: #e5ece7; --muted: #9eaba3; --line: #2b3530;
+  --biz: #6fd0a3; --biz-soft: #17302a; --home: #f0b85a; --home-soft: #33280f;
+  --ok: #59c993; --bad: #ff8a80; --bad-soft: #3a1b1a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--biz); outline-offset: 2px; }
+
+.stage { min-height: 100%; display: flex; align-items: center; justify-content: center; gap: 40px; padding: 24px 16px; flex-wrap: wrap; }
+.side { max-width: 300px; color: var(--muted); font-size: 14px; }
+.side h1 { color: var(--ink); font-size: 22px; margin: 0 0 6px; letter-spacing: -.01em; }
+.side ol { padding-left: 18px; margin: 10px 0; }
+.side li { margin: 4px 0; }
+.side button { background: none; border: 0; padding: 0; color: var(--biz); text-decoration: underline; text-underline-offset: 2px; font-size: 14px; text-align: left; }
+.side .note { font-size: 12.5px; margin-top: 14px; }
+
+.phone { width: 390px; height: 844px; background: var(--paper); border-radius: 44px; border: 10px solid #111; box-shadow: 0 30px 60px rgba(0,0,0,.18); overflow: hidden; position: relative; display: flex; flex-direction: column; }
+@media (max-width: 520px) {
+  .stage { padding: 0; display: block; }
+  .side { display: none; }
+  .phone { width: 100%; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+}
+.screen { display: none; flex: 1; flex-direction: column; min-height: 0; }
+.screen.on { display: flex; }
+.scroll { flex: 1; overflow-y: auto; padding: 20px 20px 24px; }
+.top { display: flex; align-items: center; gap: 10px; padding: 18px 20px 8px; }
+.top h2 { margin: 0; font-size: 18px; flex: 1; }
+.back { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); display: grid; place-items: center; }
+.back svg { width: 20px; height: 20px; }
+
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+.logo { width: 40px; height: 40px; border-radius: 12px; display: grid; grid-template-rows: 1fr 1fr; gap: 3px; padding: 7px; background: var(--ink); }
+.logo i { display: block; border-radius: 3px; }
+.logo i:first-child { background: var(--biz); }
+.logo i:last-child { background: var(--home); }
+
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 0 8px; }
+p { margin: 0 0 12px; }
+.lead { font-size: 26px; font-weight: 700; line-height: 1.2; letter-spacing: -.02em; margin: 26px 0 12px; }
+.muted { color: var(--muted); }
+.small { font-size: 13.5px; }
+
+.btn { min-height: 52px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); font-weight: 600; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.btn.primary { background: var(--biz); border-color: var(--biz); color: #fff; }
+:root[data-theme="dark"] .btn.primary { color: #0d110f; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #0d110f; } }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.stack { display: grid; gap: 10px; }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+
+.card { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: var(--paper); }
+.drawer { border-radius: 18px; padding: 16px; }
+.drawer.biz { background: var(--biz-soft); }
+.drawer.home { background: var(--home-soft); }
+.drawer .lbl { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.dot.biz { background: var(--biz); } .dot.home { background: var(--home); }
+.money { font-family: var(--num); font-weight: 600; font-variant-numeric: tabular-nums; }
+.big { font-size: 32px; letter-spacing: -.02em; margin-top: 4px; }
+.bar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 10px 0 6px; }
+.bar i { display: block; height: 100%; background: var(--home); border-radius: 99px; }
+
+.cta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.cta button { min-height: 64px; border-radius: 16px; border: 0; font-weight: 700; font-size: 17px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.cta .in { background: var(--biz); color: #fff; }
+.cta .out { background: var(--ink); color: var(--paper); }
+.cta small { font-weight: 500; font-size: 12px; opacity: .85; }
+
+.banner { display: flex; gap: 12px; align-items: center; border-radius: 16px; padding: 14px; background: var(--soft); margin-top: 14px; border: 1px solid var(--line); }
+.banner b { display: block; }
+.banner .go { margin-left: auto; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 0; background: var(--biz); color: #fff; font-weight: 600; white-space: nowrap; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.list li:first-child { border-top: 0; }
+.list .desc { flex: 1; min-width: 0; }
+.list .desc b { display: block; font-weight: 600; font-size: 15px; }
+.list .desc span { font-size: 12.5px; color: var(--muted); }
+.tag { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+.tag.biz { background: var(--biz-soft); color: var(--biz); }
+.tag.home { background: var(--home-soft); color: var(--home); }
+.pos { color: var(--ok); } .neg { color: var(--bad); }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--soft); border-radius: 14px; padding: 4px; gap: 4px; border: 1px solid var(--line); }
+.seg button { min-height: 44px; border: 0; border-radius: 10px; background: transparent; font-weight: 600; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.seg button[aria-pressed="true"].biz { color: var(--biz); }
+.seg button[aria-pressed="true"].home { color: var(--home); }
+.amount { text-align: center; font-family: var(--num); font-size: 44px; font-weight: 600; margin: 18px 0 6px; letter-spacing: -.02em; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.keypad button { min-height: 54px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); font-size: 22px; font-family: var(--num); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); font-size: 14px; font-weight: 500; }
+.chip[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+
+label.field { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
+label.field span.hint { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+input[type="text"], input[type="number"], input[type="time"], select { min-height: 50px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); padding: 0 14px; font-size: 17px; width: 100%; }
+.check { display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; }
+.check input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--biz); flex: none; }
+.toggle { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.toggle:first-child { border-top: 0; }
+.toggle .t { flex: 1; } .toggle .t b { display: block; font-size: 15px; } .toggle .t span { font-size: 12.5px; color: var(--muted); }
+.switch { width: 52px; height: 32px; border-radius: 99px; border: 0; background: var(--line); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.switch[aria-checked="true"] { background: var(--biz); }
+.switch[aria-checked="true"]::after { left: 23px; }
+
+.diff { border-radius: 14px; padding: 12px 14px; margin-top: 12px; font-size: 14.5px; }
+.diff.ok { background: var(--biz-soft); }
+.diff.bad { background: var(--bad-soft); }
+.streak { display: flex; gap: 5px; margin-top: 8px; }
+.streak i { width: 100%; height: 28px; border-radius: 6px; background: var(--line); }
+.streak i.d { background: var(--biz); }
+
+.chart { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end; height: 120px; margin-top: 8px; }
+.chart div { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; height: 100%; font-size: 11.5px; color: var(--muted); }
+.chart .b { width: 100%; border-radius: 8px 8px 4px 4px; background: var(--biz); }
+.kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kpi { background: var(--soft); border-radius: 14px; padding: 12px; }
+.kpi span { font-size: 12.5px; color: var(--muted); display: block; }
+.kpi b { font-size: 18px; }
+
+nav.tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: var(--paper); padding-bottom: env(safe-area-inset-bottom, 0); }
+nav.tabs button { min-height: 62px; border: 0; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+nav.tabs svg { width: 22px; height: 22px; }
+nav.tabs button[aria-current="page"] { color: var(--biz); }
+.toast { position: absolute; left: 16px; right: 16px; bottom: 80px; background: var(--ink); color: var(--paper); border-radius: 14px; padding: 12px 14px; font-size: 14px; display: none; z-index: 5; }
+.toast.on { display: block; }
+.offline { font-size: 11.5px; font-weight: 600; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
+.offline i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="side" aria-label="Sobre este protótipo">
+    <h1>Caixa do MEI</h1>
+    <p>Protótipo navegável do artefato do projeto <b>Manter simples</b>. Os dados são de exemplo e ficam só neste navegador.</p>
+    <p><b>Pular para uma tela:</b></p>
+    <ol>
+      <li><button data-jump="s-welcome">Boas-vindas</button></li>
+      <li><button data-jump="s-consent">Consentimento da pesquisa</button></li>
+      <li><button data-jump="s-setup">Configurar (pró-labore e DAS)</button></li>
+      <li><button data-jump="s-home">Hoje</button></li>
+      <li><button data-jump="s-add">Lançar</button></li>
+      <li><button data-jump="s-close">Fechar o caixa</button></li>
+      <li><button data-jump="s-pay">Pagar a si mesmo</button></li>
+      <li><button data-jump="s-month">Resumo do mês</button></li>
+      <li><button data-jump="s-more">Lembretes e dados</button></li>
+    </ol>
+    <p><button id="reset">Recomeçar com dados de exemplo</button></p>
+    <p class="note">Protocolo em 3 regras: 1) dinheiro do negócio e da casa em gavetas separadas; 2) pague a si mesmo um valor fixo; 3) feche o caixa todo dia, em 5 minutos.</p>
+  </aside>
+
+  <main class="phone" aria-label="Tela do aplicativo">
+
+    <!-- 1. Boas-vindas -->
+    <section class="screen" id="s-welcome" aria-label="Boas-vindas">
+      <div class="scroll" style="display:flex;flex-direction:column">
+        <div class="brand"><span class="logo" aria-hidden="true"><i></i><i></i></span>Caixa do MEI</div>
+        <p class="lead">Saiba quanto entrou, quanto saiu e quanto pode tirar para você.</p>
+        <p class="muted">Cinco minutos por dia. Sem planilha, sem contador, sem cartão.</p>
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin-top:0">As 3 regras</h3>
+          <ol class="small" style="padding-left:18px;margin:0">
+            <li style="margin:6px 0"><b>Duas gavetas:</b> o dinheiro do negócio não se mistura com o da casa.</li>
+            <li style="margin:6px 0"><b>Seu salário fixo:</b> você tira um valor combinado, não "quando precisa".</li>
+            <li style="margin:6px 0"><b>Feche o caixa:</b> todo dia, confira se o que tem bate com o anotado.</li>
+          </ol>
+        </div>
+        <div style="flex:1"></div>
+        <div class="stack" style="margin-top:20px">
+          <button class="btn primary" data-go="s-consent">Começar</button>
+          <button class="btn ghost" data-go="s-home">Já uso, entrar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Consentimento -->
+    <section class="screen" id="s-consent" aria-label="Consentimento da pesquisa">
+      <div class="top"><button class="back" data-go="s-welcome" aria-label="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><h2>Este app faz parte de uma pesquisa</h2></div>
+      <div class="scroll">
+        <p>O Caixa do MEI é gratuito e faz parte de uma pesquisa de mestrado que estuda se uma rotina simples ajuda o MEI a organizar o dinheiro.</p>
+        <div class="card small">
+          <p><b>Se você participar:</b> usamos dados de uso (por exemplo, em quantos dias você fechou o caixa), sem seu nome, para a pesquisa.</p>
+          <p><b>Nunca:</b> vendemos dados, mostramos anúncios ou pedimos senha de banco.</p>
+          <p><b>Você pode sair</b> da pesquisa ou apagar seus dados quando quiser, em Mais › Meus dados.</p><p style="margin:0"><b>Dúvidas:</b> caixadomeipesquisa@gmail.com</p>
+        </div>
+        <p class="small muted" style="margin-top:10px">[Texto completo do termo de consentimento aprovado pelo comitê de ética]</p>
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="agree"> Li e aceito participar da pesquisa.</label>
+        <div class="stack" style="margin-top:20px">
+          <button class="btn primary" id="btnAgree" disabled data-go="s-setup">Aceito participar</button>
+          <button class="btn" data-go="s-setup">Usar sem participar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Configurar -->
+    <section class="screen" id="s-setup" aria-label="Configurar">
+      <div class="top"><button class="back" data-go="s-consent" aria-label="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><h2>Três perguntas rápidas</h2></div>
+      <div class="scroll stack" style="gap:18px">
+        <label class="field">Nome do seu negócio
+          <input type="text" id="fName" value="Salgados da Ana">
+        </label>
+        <label class="field">Quanto você quer tirar por mês para a casa?
+          <span class="hint">Seu salário fixo. Dá para mudar depois.</span>
+          <input type="number" id="fPay" inputmode="decimal" value="2000" min="0" step="50">
+        </label>
+        <label class="field">De quanto em quanto tempo você se paga?
+          <select id="fFreq"><option value="4">Toda semana</option><option value="2">A cada 15 dias</option><option value="1">Uma vez por mês</option></select>
+        </label>
+        <label class="field">Que horas fechar o caixa?
+          <span class="hint">O app te lembra nesse horário.</span>
+          <input type="time" id="fTime" value="19:00">
+        </label>
+        <button class="btn primary" id="btnSetup">Pronto</button>
+      </div>
+    </section>
+
+    <!-- 4. Hoje -->
+    <section class="screen" id="s-home" aria-label="Hoje">
+      <div class="top" style="padding-bottom:0">
+        <div style="flex:1">
+          <div class="small muted" id="hDate">Hoje</div>
+          <h2 id="hName">Salgados da Ana</h2>
+        </div>
+        <span class="offline" title="Funciona sem internet"><i aria-hidden="true"></i>salvo no aparelho</span>
+      </div>
+      <div class="scroll">
+        <div class="drawer biz">
+          <div class="lbl"><span class="dot biz" aria-hidden="true"></span>Gaveta do negócio</div>
+          <div class="money big" id="hBiz">R$ 0,00</div>
+          <div class="small muted" id="hBizNote">Hoje entrou R$ 0,00 e saiu R$ 0,00</div>
+        </div>
+        <div class="drawer home" style="margin-top:10px">
+          <div class="lbl"><span class="dot home" aria-hidden="true"></span>Seu salário este mês</div>
+          <div class="money" style="font-size:20px;margin-top:4px" id="hPaid">R$ 0 de R$ 2.000</div>
+          <div class="bar" aria-hidden="true"><i id="hPaidBar" style="width:0%"></i></div>
+          <div class="small" id="hNext">Próximo pagamento: sexta</div>
+        </div>
+        <div class="cta">
+          <button class="in" data-add="in">+ Entrou<small>venda, recebimento</small></button>
+          <button class="out" data-add="out">− Saiu<small>compra, conta, gasto</small></button>
+        </div>
+        <div class="banner" id="hBanner">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 11h18M8 7V4h8v3"/></svg>
+          <div><b>Feche o caixa de hoje</b><span class="small muted">Leva 1 minuto</span></div>
+          <button class="go" data-go="s-close">Fechar</button>
+        </div>
+        <h3>Hoje</h3>
+        <ul class="list" id="hList"></ul>
+      </div>
+    </section>
+
+    <!-- 5. Lançar -->
+    <section class="screen" id="s-add" aria-label="Lançar">
+      <div class="top"><button class="back" data-go="s-home" aria-label="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><h2>Anotar</h2></div>
+      <div class="scroll">
+        <div class="seg" role="group" aria-label="Tipo">
+          <button id="tIn" aria-pressed="true">Entrou</button>
+          <button id="tOut" aria-pressed="false">Saiu</button>
+        </div>
+        <div class="amount money" id="aVal" aria-live="polite">R$ 0,00</div>
+        <div class="seg" role="group" aria-label="De qual gaveta">
+          <button id="gBiz" class="biz" aria-pressed="true">Negócio</button>
+          <button id="gHome" class="home" aria-pressed="false">Casa</button>
+        </div>
+        <p class="small muted" id="gHint" style="margin:8px 2px 0">Dinheiro do negócio: vendas, insumos, contas da atividade.</p>
+        <h3>O que foi?</h3>
+        <div class="chips" id="cats"></div>
+        <div class="keypad" id="keypad"></div>
+        <button class="btn primary" id="btnSave" style="margin-top:12px" disabled>Salvar</button>
+      </div>
+    </section>
+
+    <!-- 6. Fechar o caixa -->
+    <section class="screen" id="s-close" aria-label="Fechar o caixa">
+      <div class="top"><button class="back" data-go="s-home" aria-label="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><h2>Fechar o caixa</h2></div>
+      <div class="scroll">
+        <div class="card">
+          <div class="small muted">Pelo que você anotou, a gaveta do negócio deveria ter</div>
+          <div class="money big" id="cCalc">R$ 0,00</div>
+        </div>
+        <label class="field" style="margin-top:16px">Quanto tem de verdade agora?
+          <span class="hint">Some o dinheiro em mãos e o saldo da conta do negócio.</span>
+          <input type="number" id="cReal" inputmode="decimal" step="0.01" placeholder="0,00">
+        </label>
+        <div class="diff" id="cDiff" hidden></div>
+        <button class="btn primary" id="btnClose" style="margin-top:16px">Fechar o dia</button>
+        <h3>Últimos 14 dias</h3>
+        <div class="streak" id="cStreak" aria-label="Dias com caixa fechado"></div>
+        <p class="small muted" style="margin-top:8px" id="cStreakTxt"></p>
+      </div>
+    </section>
+
+    <!-- 7. Pagar a si mesmo -->
+    <section class="screen" id="s-pay" aria-label="Pagar a si mesmo">
+      <div class="top"><button class="back" data-go="s-month" aria-label="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><h2>Pagar a si mesmo</h2></div>
+      <div class="scroll">
+        <p>Hoje é dia de passar seu salário da gaveta do negócio para a da casa.</p>
+        <div class="row" style="align-items:stretch">
+          <div class="drawer biz"><div class="lbl"><span class="dot biz" aria-hidden="true"></span>Negócio</div><div class="money" id="pBiz" style="font-size:18px;margin-top:4px">R$ 0</div></div>
+          <div class="drawer home"><div class="lbl"><span class="dot home" aria-hidden="true"></span>Casa</div><div class="money" id="pHome" style="font-size:18px;margin-top:4px">R$ 0</div></div>
+        </div>
+        <div class="card" style="margin-top:14px;text-align:center">
+          <div class="small muted">Valor desta vez</div>
+          <div class="money big" id="pVal">R$ 500,00</div>
+          <div class="small muted" id="pRule">R$ 2.000 por mês, toda semana</div>
+        </div>
+        <div class="diff bad" id="pWarn" hidden>A gaveta do negócio não tem o suficiente. Pague só o que der e anote o resto como pendente: tirar a mais agora é o que desorganiza o mês.</div>
+        <div class="stack" style="margin-top:16px">
+          <button class="btn primary" id="btnPay">Passei para a casa</button>
+          <button class="btn ghost" data-go="s-month">Agora não</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. Mês -->
+    <section class="screen" id="s-month" aria-label="Resumo do mês">
+      <div class="top"><h2 id="mTitle">Este mês</h2></div>
+      <div class="scroll">
+        <div class="kpis">
+          <div class="kpi"><span>Entrou</span><b class="money pos" id="mIn">R$ 0</b></div>
+          <div class="kpi"><span>Saiu</span><b class="money neg" id="mOut">R$ 0</b></div>
+          <div class="kpi"><span>Sobrou no negócio</span><b class="money" id="mNet">R$ 0</b></div>
+          <div class="kpi"><span>Caixa fechado</span><b class="money" id="mDays">0 dias</b></div>
+        </div>
+        <h3>Entradas por semana</h3>
+        <div class="chart" id="mChart" role="img" aria-label="Entradas por semana"></div>
+        <div class="drawer home" style="margin-top:18px">
+          <div class="lbl"><span class="dot home" aria-hidden="true"></span>Seu salário</div>
+          <div class="money" style="font-size:20px;margin-top:4px" id="mPaid">R$ 0 de R$ 2.000</div>
+          <div class="bar" aria-hidden="true"><i id="mPaidBar" style="width:0%"></i></div>
+          <button class="btn" style="margin-top:8px" data-go="s-pay">Pagar a mim mesmo</button>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="toggle"><div class="t"><b>DAS do mês</b><span>Vence dia 20 · [valor do seu DAS]</span></div><button class="switch" role="switch" aria-checked="false" id="dasPaid" aria-label="DAS pago"></button></div>
+        </div>
+        <p class="small muted" style="margin-top:12px">Gasto da casa pago com dinheiro do negócio este mês: <b id="mMix">0 vezes</b>. A meta é zero.</p>
+      </div>
+    </section>
+
+    <!-- 9. Mais -->
+    <section class="screen" id="s-more" aria-label="Lembretes e dados">
+      <div class="top"><h2>Mais</h2></div>
+      <div class="scroll">
+        <h3 style="margin-top:4px">Lembretes</h3>
+        <div class="card">
+          <div class="toggle"><div class="t"><b>Fechar o caixa</b><span id="rTime">Todo dia às 19:00</span></div><button class="switch" role="switch" aria-checked="true" aria-label="Lembrete de fechar o caixa"></button></div>
+          <div class="toggle"><div class="t"><b>Dia de se pagar</b><span>No dia combinado, de manhã</span></div><button class="switch" role="switch" aria-checked="true" aria-label="Lembrete de pagamento"></button></div>
+          <div class="toggle"><div class="t"><b>DAS</b><span>Dia 15, cinco dias antes de vencer</span></div><button class="switch" role="switch" aria-checked="true" aria-label="Lembrete do DAS"></button></div>
+        </div>
+        <h3>Meus dados</h3>
+        <div class="stack">
+          <button class="btn" id="btnExport">Baixar meus lançamentos (CSV)</button>
+          <button class="btn" id="btnDelete" style="color:var(--bad)">Apagar todos os meus dados</button>
+        </div>
+        <h3>Pesquisa</h3>
+        <div class="card small">
+          <p id="rConsent">Você participa da pesquisa.</p>
+          <button class="btn" id="btnLeave">Sair da pesquisa</button>
+        </div>
+        <h3>Sobre</h3>
+        <p class="small muted">Caixa do MEI · protocolo aberto "Manter simples" · pesquisa de mestrado. Gratuito, sem anúncios. Dúvidas: <a href="mailto:caixadomeipesquisa@gmail.com" style="color:var(--biz)">caixadomeipesquisa@gmail.com</a></p>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <nav class="tabs" id="tabs" aria-label="Navegação">
+      <button data-go="s-home" aria-label="Hoje"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Hoje</button>
+      <button data-go="s-close" aria-label="Fechar caixa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 11h18M8 7V4h8v3"/></svg>Fechar</button>
+      <button data-go="s-month" aria-label="Mês"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Mês</button>
+      <button data-go="s-more" aria-label="Mais"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>Mais</button>
+    </nav>
+  </main>
+</div>
+
+<script>
+(function () {
+  var KEY = 'caixadomei-mock-v1';
+  var fmt = function (v) { return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var fmt0 = function (v) { return (v < 0 ? '−' : '') + 'R$ ' + Math.abs(Math.round(v)).toLocaleString('pt-BR'); };
+  var today = new Date(); today.setHours(12, 0, 0, 0);
+  var iso = function (d) { return d.toISOString().slice(0, 10); };
+  var daysAgo = function (n) { var d = new Date(today); d.setDate(d.getDate() - n); return iso(d); };
+
+  function seed() {
+    var tx = [], id = 1;
+    function add(day, type, drawer, cat, val) { tx.push({ id: id++, day: daysAgo(day), type: type, drawer: drawer, cat: cat, val: val }); }
+    for (var d = 20; d >= 1; d--) {
+      if (d % 7 === 0) continue;
+      add(d, 'in', 'biz', 'Venda', 180 + (d * 37) % 140);
+      if (d % 3 === 0) add(d, 'out', 'biz', 'Insumos', 90 + (d * 13) % 60);
+      if (d % 5 === 0) add(d, 'out', 'biz', 'Transporte', 25);
+    }
+    add(9, 'out', 'biz', 'Conta da casa', 120);
+    add(14, 'out', 'biz', 'Pagar a mim', 500); add(14, 'in', 'home', 'Pagar a mim', 500);
+    add(7, 'out', 'biz', 'Pagar a mim', 500); add(7, 'in', 'home', 'Pagar a mim', 500);
+    add(0, 'in', 'biz', 'Venda', 210); add(0, 'out', 'biz', 'Insumos', 64.5);
+    var closed = [];
+    for (var c = 13; c >= 1; c--) if ([3, 7, 10].indexOf(c) < 0) closed.push(daysAgo(c));
+    return { tx: tx, nextId: id, closed: closed, name: 'Salgados da Ana', pay: 2000, freq: 4, time: '19:00', consent: true, das: false };
+  }
+  var st;
+  try { st = JSON.parse(localStorage.getItem(KEY)); } catch (e) { st = null; }
+  if (!st || !st.tx) st = seed();
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+
+  var screens = Array.prototype.slice.call(document.querySelectorAll('.screen'));
+  var tabbed = ['s-home', 's-close', 's-month', 's-more'];
+  var cur = 's-welcome';
+  function go(id) {
+    cur = id;
+    screens.forEach(function (s) { s.classList.toggle('on', s.id === id); });
+    document.getElementById('tabs').style.display = tabbed.indexOf(id) >= 0 ? '' : 'none';
+    document.querySelectorAll('#tabs button').forEach(function (b) { if (b.dataset.go === id) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+    render();
+    var sc = document.querySelector('#' + id + ' .scroll'); if (sc) sc.scrollTop = 0;
+  }
+  document.addEventListener('click', function (e) {
+    var g = e.target.closest('[data-go]'); if (g && !g.disabled) { go(g.dataset.go); return; }
+    var j = e.target.closest('[data-jump]'); if (j) { go(j.dataset.jump); return; }
+    var a = e.target.closest('[data-add]'); if (a) { startAdd(a.dataset.add); return; }
+    var sw = e.target.closest('.switch'); if (sw) { var v = sw.getAttribute('aria-checked') !== 'true'; sw.setAttribute('aria-checked', String(v)); if (sw.id === 'dasPaid') { st.das = v; save(); toast(v ? 'DAS marcado como pago.' : 'DAS marcado como pendente.'); } }
+  });
+  var tt;
+  function toast(t) { var el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(tt); tt = setTimeout(function () { el.classList.remove('on'); }, 2400); }
+
+  function sum(f) { return st.tx.filter(f).reduce(function (s, t) { return s + (t.type === 'in' ? t.val : -t.val); }, 0); }
+  function bizBal() { return sum(function (t) { return t.drawer === 'biz'; }) + 1200; }
+  function homeBal() { return sum(function (t) { return t.drawer === 'home'; }) + 300; }
+  var monthKey = iso(today).slice(0, 7);
+  function paidMonth() { return st.tx.filter(function (t) { return t.cat === 'Pagar a mim' && t.drawer === 'biz' && t.day.slice(0, 7) === monthKey; }).reduce(function (s, t) { return s + t.val; }, 0); }
+
+  function render() {
+    var dias = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+    document.getElementById('hDate').textContent = 'Hoje, ' + dias[today.getDay()] + ' ' + today.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+    document.getElementById('hName').textContent = st.name;
+    var t0 = iso(today), tin = 0, tout = 0;
+    st.tx.forEach(function (t) { if (t.day === t0 && t.drawer === 'biz') { if (t.type === 'in') tin += t.val; else tout += t.val; } });
+    document.getElementById('hBiz').textContent = fmt(bizBal());
+    document.getElementById('hBizNote').textContent = 'Hoje entrou ' + fmt(tin) + ' e saiu ' + fmt(tout);
+    var paid = paidMonth(), pct = Math.min(100, paid / st.pay * 100);
+    ['h', 'm'].forEach(function (p) { document.getElementById(p + 'Paid').textContent = fmt0(paid) + ' de ' + fmt0(st.pay); document.getElementById(p + 'PaidBar').style.width = pct + '%'; });
+    document.getElementById('hNext').textContent = paid >= st.pay ? 'Salário do mês completo.' : 'Próximo pagamento: ' + fmt0(st.pay / st.freq) + (st.freq === 4 ? ' na sexta' : st.freq === 2 ? ' no dia 15 ou 30' : ' no dia 5');
+    var closedToday = st.closed.indexOf(t0) >= 0;
+    document.getElementById('hBanner').style.display = closedToday ? 'none' : '';
+    var ul = document.getElementById('hList'); ul.innerHTML = '';
+    var todays = st.tx.filter(function (t) { return t.day === t0; }).reverse();
+    if (!todays.length) { ul.innerHTML = '<li class="muted small">Nada anotado hoje ainda.</li>'; }
+    todays.forEach(function (t) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="tag ' + t.drawer + '">' + (t.drawer === 'biz' ? 'Negócio' : 'Casa') + '</span><div class="desc"><b></b><span>' + (t.type === 'in' ? 'Entrou' : 'Saiu') + '</span></div><span class="money ' + (t.type === 'in' ? 'pos' : 'neg') + '">' + (t.type === 'in' ? '+' : '−') + fmt(t.val) + '</span>';
+      li.querySelector('b').textContent = t.cat; ul.appendChild(li);
+    });
+    // fechar
+    document.getElementById('cCalc').textContent = fmt(bizBal());
+    var sk = document.getElementById('cStreak'); sk.innerHTML = ''; var n = 0;
+    for (var d = 13; d >= 0; d--) { var k = daysAgo(d), on = st.closed.indexOf(k) >= 0; if (on) n++; var i = document.createElement('i'); if (on) i.className = 'd'; i.title = k; sk.appendChild(i); }
+    document.getElementById('cStreakTxt').textContent = 'Você fechou o caixa em ' + n + ' dos últimos 14 dias.';
+    // pagar
+    document.getElementById('pBiz').textContent = fmt0(bizBal());
+    document.getElementById('pHome').textContent = fmt0(homeBal());
+    var parc = st.pay / st.freq;
+    document.getElementById('pVal').textContent = fmt(parc);
+    document.getElementById('pRule').textContent = fmt0(st.pay) + ' por mês, ' + (st.freq === 4 ? 'toda semana' : st.freq === 2 ? 'a cada 15 dias' : 'uma vez por mês');
+    document.getElementById('pWarn').hidden = bizBal() >= parc;
+    // mês
+    var mesNome = today.toLocaleDateString('pt-BR', { month: 'long' });
+    document.getElementById('mTitle').textContent = 'Resumo de ' + mesNome;
+    var mi = 0, mo = 0, mix = 0;
+    st.tx.forEach(function (t) { if (t.drawer !== 'biz' || t.cat === 'Pagar a mim' || t.day.slice(0, 7) !== monthKey) return; if (t.type === 'in') mi += t.val; else mo += t.val; if (t.cat === 'Conta da casa') mix++; });
+    document.getElementById('mIn').textContent = fmt0(mi);
+    document.getElementById('mOut').textContent = fmt0(mo);
+    document.getElementById('mNet').textContent = fmt0(mi - mo);
+    document.getElementById('mDays').textContent = st.closed.filter(function (k) { return k.slice(0, 7) === monthKey; }).length + ' dias';
+    document.getElementById('mMix').textContent = mix + (mix === 1 ? ' vez' : ' vezes');
+    var wk = [0, 0, 0, 0];
+    st.tx.forEach(function (t) { if (t.drawer === 'biz' && t.type === 'in' && t.cat !== 'Pagar a mim') { var ago = Math.round((today - new Date(t.day + 'T12:00:00')) / 864e5); var w = 3 - Math.min(3, Math.floor(ago / 7)); wk[w] += t.val; } });
+    var mx = Math.max.apply(null, wk) || 1, ch = document.getElementById('mChart'); ch.innerHTML = '';
+    wk.forEach(function (v, i) { var dv = document.createElement('div'); dv.innerHTML = '<span class="money" style="font-size:11px">' + fmt0(v) + '</span><span class="b" style="height:' + Math.max(4, v / mx * 80) + 'px"></span><span>' + (i === 3 ? 'esta' : (3 - i) + ' atrás') + '</span>'; ch.appendChild(dv); });
+    document.getElementById('dasPaid').setAttribute('aria-checked', String(!!st.das));
+    // mais
+    document.getElementById('rTime').textContent = 'Todo dia às ' + st.time;
+    document.getElementById('rConsent').textContent = st.consent ? 'Você participa da pesquisa. Seus dados de uso vão sem seu nome.' : 'Você usa o app sem participar da pesquisa.';
+    document.getElementById('btnLeave').textContent = st.consent ? 'Sair da pesquisa' : 'Participar da pesquisa';
+  }
+
+  // consentimento e configuração
+  var agree = document.getElementById('agree'), btnAgree = document.getElementById('btnAgree');
+  agree.addEventListener('change', function () { btnAgree.disabled = !agree.checked; });
+  btnAgree.addEventListener('click', function () { st.consent = true; save(); });
+  document.querySelector('#s-consent .btn:not(.primary)').addEventListener('click', function () { st.consent = false; save(); });
+  document.getElementById('btnSetup').addEventListener('click', function () {
+    st.name = document.getElementById('fName').value.trim() || 'Meu negócio';
+    st.pay = Math.max(0, parseFloat(document.getElementById('fPay').value) || 0);
+    st.freq = parseInt(document.getElementById('fFreq').value, 10);
+    st.time = document.getElementById('fTime').value || '19:00';
+    save(); go('s-home'); toast('Pronto. Vamos te lembrar às ' + st.time + '.');
+  });
+
+  // lançar
+  var add = { type: 'in', drawer: 'biz', cents: '', cat: '' };
+  var CATS = { in: { biz: ['Venda', 'Recebimento', 'Outro'], home: ['Pagar a mim', 'Outro'] }, out: { biz: ['Insumos', 'Transporte', 'Conta do negócio', 'DAS', 'Outro'], home: ['Mercado', 'Conta da casa', 'Outro'] } };
+  function startAdd(type) { add = { type: type, drawer: 'biz', cents: '', cat: '' }; go('s-add'); drawAdd(); }
+  function drawAdd() {
+    document.getElementById('tIn').setAttribute('aria-pressed', String(add.type === 'in'));
+    document.getElementById('tOut').setAttribute('aria-pressed', String(add.type === 'out'));
+    document.getElementById('gBiz').setAttribute('aria-pressed', String(add.drawer === 'biz'));
+    document.getElementById('gHome').setAttribute('aria-pressed', String(add.drawer === 'home'));
+    document.getElementById('gHint').textContent = add.drawer === 'biz' ? 'Dinheiro do negócio: vendas, insumos, contas da atividade.' : 'Dinheiro da casa: mercado, aluguel, contas da família.';
+    var v = (parseInt(add.cents || '0', 10)) / 100;
+    document.getElementById('aVal').textContent = fmt(v);
+    var cats = document.getElementById('cats'); cats.innerHTML = '';
+    CATS[add.type][add.drawer].forEach(function (c) { var b = document.createElement('button'); b.className = 'chip'; b.textContent = c; b.setAttribute('aria-pressed', String(add.cat === c)); b.onclick = function () { add.cat = c; drawAdd(); }; cats.appendChild(b); });
+    document.getElementById('btnSave').disabled = !(v > 0 && add.cat);
+  }
+  document.getElementById('tIn').onclick = function () { add.type = 'in'; add.cat = ''; drawAdd(); };
+  document.getElementById('tOut').onclick = function () { add.type = 'out'; add.cat = ''; drawAdd(); };
+  document.getElementById('gBiz').onclick = function () { add.drawer = 'biz'; add.cat = ''; drawAdd(); };
+  document.getElementById('gHome').onclick = function () { add.drawer = 'home'; add.cat = ''; drawAdd(); };
+  var kp = document.getElementById('keypad');
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'].forEach(function (k) {
+    var b = document.createElement('button'); b.textContent = k; b.setAttribute('aria-label', k === '⌫' ? 'Apagar' : k);
+    b.onclick = function () { if (k === '⌫') add.cents = add.cents.slice(0, -1); else if (add.cents.length < 8) add.cents = (add.cents + k).replace(/^0+/, ''); drawAdd(); };
+    kp.appendChild(b);
+  });
+  document.getElementById('btnSave').onclick = function () {
+    var v = parseInt(add.cents || '0', 10) / 100;
+    st.tx.push({ id: st.nextId++, day: iso(today), type: add.type, drawer: add.drawer, cat: add.cat, val: v });
+    save(); go('s-home');
+    toast(add.drawer === 'biz' && add.type === 'out' && add.cat === 'Conta da casa' ? 'Anotado. Dica: conta da casa sai da gaveta da casa.' : 'Anotado: ' + (add.type === 'in' ? 'entrou ' : 'saiu ') + fmt(v) + '.');
+  };
+
+  // fechar caixa
+  var cReal = document.getElementById('cReal'), cDiff = document.getElementById('cDiff');
+  cReal.addEventListener('input', function () {
+    var r = parseFloat(cReal.value); if (isNaN(r)) { cDiff.hidden = true; return; }
+    var d = r - bizBal(); cDiff.hidden = false;
+    if (Math.abs(d) < 1) { cDiff.className = 'diff ok'; cDiff.textContent = 'Bateu. Seu caixa está certo.'; }
+    else { cDiff.className = 'diff bad'; cDiff.textContent = (d < 0 ? 'Faltam ' : 'Sobram ') + fmt(Math.abs(d)) + '. Algum gasto ou venda ficou sem anotar? Se não achar, feche assim mesmo: o app registra o ajuste.'; }
+  });
+  document.getElementById('btnClose').onclick = function () {
+    var r = parseFloat(cReal.value), t0 = iso(today);
+    if (!isNaN(r)) { var d = r - bizBal(); if (Math.abs(d) >= 1) st.tx.push({ id: st.nextId++, day: t0, type: d > 0 ? 'in' : 'out', drawer: 'biz', cat: 'Ajuste do caixa', val: Math.abs(d) }); }
+    if (st.closed.indexOf(t0) < 0) st.closed.push(t0);
+    save(); cReal.value = ''; cDiff.hidden = true; go('s-home'); toast('Caixa de hoje fechado. Até amanhã!');
+  };
+
+  // pagar a si mesmo
+  document.getElementById('btnPay').onclick = function () {
+    var v = Math.min(st.pay / st.freq, Math.max(0, bizBal()));
+    if (v <= 0) { toast('Não há saldo no negócio para pagar agora.'); return; }
+    var t0 = iso(today);
+    st.tx.push({ id: st.nextId++, day: t0, type: 'out', drawer: 'biz', cat: 'Pagar a mim', val: v });
+    st.tx.push({ id: st.nextId++, day: t0, type: 'in', drawer: 'home', cat: 'Pagar a mim', val: v });
+    save(); go('s-month'); toast('Pago: ' + fmt(v) + ' foi para a casa.');
+  };
+
+  // dados
+  document.getElementById('btnExport').onclick = function () {
+    var rows = [['data', 'tipo', 'gaveta', 'categoria', 'valor']].concat(st.tx.map(function (t) { return [t.day, t.type === 'in' ? 'entrou' : 'saiu', t.drawer === 'biz' ? 'negocio' : 'casa', t.cat, t.val.toFixed(2).replace('.', ',')]; }));
+    var csv = rows.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';'); }).join('\n');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })); a.download = 'caixa-do-mei.csv'; document.body.appendChild(a); a.click(); a.remove();
+    toast('Arquivo baixado.');
+  };
+  var delArmed = false;
+  document.getElementById('btnDelete').onclick = function () {
+    if (!delArmed) { delArmed = true; this.textContent = 'Toque de novo para apagar tudo'; var b = this; setTimeout(function () { delArmed = false; b.textContent = 'Apagar todos os meus dados'; }, 4000); return; }
+    delArmed = false; this.textContent = 'Apagar todos os meus dados';
+    st.tx = []; st.closed = []; save(); go('s-home'); toast('Seus dados foram apagados.');
+  };
+  document.getElementById('btnLeave').onclick = function () { st.consent = !st.consent; save(); render(); toast(st.consent ? 'Obrigado por participar.' : 'Você saiu da pesquisa. O app continua igual.'); };
+  document.getElementById('reset').onclick = function () { st = seed(); save(); go('s-welcome'); };
+
+  go('s-welcome');
+})();
+</script>
+</body>
+</html>
