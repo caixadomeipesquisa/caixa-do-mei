@@ -82,6 +82,30 @@ Deno.serve(async () => {
       }
     }
 
+    // 3) Relatório mensal: dia 5, às 9h (prazo de preenchimento é o dia 20)
+    if (now.dom === 5 && now.minutes >= 540 && now.minutes < 555) {
+      const ym = now.day.slice(0, 7);
+      const { data: prof } = await supabase.from('profiles').select('kept_reports').eq('id', p.id).maybeSingle();
+      const [y, m] = ym.split('-').map(Number);
+      const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+      if (!(prof?.kept_reports ?? []).includes(prev) && !(await alreadySent(p.id, 'report', now.day))) {
+        await push(p.id, 'Relatório de receitas pronto', 'Confira e guarde o relatório do mês passado até o dia 20.');
+        sent++;
+      }
+    }
+
+    // 4) DASN-SIMEI: 2 e 25 de maio, às 9h, se não marcada como entregue
+    if (now.day.slice(5, 7) === '05' && (now.dom === 2 || now.dom === 25) && now.minutes >= 540 && now.minutes < 555) {
+      const year = Number(now.day.slice(0, 4)) - 1;
+      const { data: prof } = await supabase.from('profiles').select('dasn_done').eq('id', p.id).maybeSingle();
+      if (!(prof?.dasn_done ?? []).includes(year) && !(await alreadySent(p.id, 'dasn', now.day))) {
+        await push(p.id, 'Declaração anual do MEI', `Entregue a DASN-SIMEI de ${year} até 31 de maio. Os números estão prontos no app.`);
+        const { data: u } = await supabase.auth.admin.getUserById(p.id);
+        if (u.user?.email) await email(u.user.email, 'Declaração anual do MEI até 31 de maio', `Lembrete do Caixa do MEI: entregue a DASN-SIMEI de ${year} até 31 de maio. Os números já estão prontos no app, em Mais › Obrigações do MEI.`);
+        sent++;
+      }
+    }
+
     // 2) DAS: 5 dias antes do vencimento, às 9h
     if (now.dom === (p.das_day ?? 20) - 5 && now.minutes >= 540 && now.minutes < 555) {
       if (!(await alreadySent(p.id, 'das', now.day))) {

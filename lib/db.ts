@@ -4,6 +4,7 @@ import Dexie, { type Table } from 'dexie';
 import { uid, today } from './money';
 
 export type Drawer = 'biz' | 'home';
+export type Activity = 'comercio' | 'industria' | 'servicos';
 export type TxType = 'in' | 'out';
 
 export interface Tx {
@@ -15,6 +16,8 @@ export interface Tx {
   cents: number;
   created_at: string;
   deleted?: boolean;
+  nf?: boolean; // venda com nota fiscal
+  activity?: Activity; // atividade da receita (relatório mensal)
 }
 
 export interface Closing {
@@ -34,6 +37,16 @@ export interface Settings {
   opening_biz_cents: number; // saldo inicial informado na configuração
   consent_research: boolean | null; // null = ainda não respondeu
   onboarded: boolean;
+  // Obrigações (opcionais, configuradas fora do onboarding)
+  activity: Activity; // atividade principal (padrão da venda)
+  has_employee: boolean;
+  kept_reports: string[]; // meses AAAA-MM marcados como guardados
+  dasn_done: number[]; // anos-calendário com DASN entregue
+  // Acompanhamento do limite (opcional)
+  track_limit: boolean;
+  limit_year: number; // ano a que se refere a receita anterior
+  revenue_before_cents: number; // faturamento do ano antes de usar o app
+  opened_month: number | null; // 1-12 se o MEI abriu no ano acompanhado
 }
 
 export interface OutboxItem {
@@ -70,10 +83,19 @@ export const defaultSettings: Settings = {
   opening_biz_cents: 0,
   consent_research: null,
   onboarded: false,
+  activity: 'comercio',
+  has_employee: false,
+  kept_reports: [],
+  dasn_done: [],
+  track_limit: false,
+  limit_year: new Date().getFullYear(),
+  revenue_before_cents: 0,
+  opened_month: null,
 };
 
 export async function getSettings(): Promise<Settings> {
-  return (await db.settings.get('me')) ?? defaultSettings;
+  const s = await db.settings.get('me');
+  return { ...defaultSettings, ...(s ?? {}) };
 }
 
 export async function saveSettings(s: Settings) {
@@ -88,6 +110,14 @@ export async function saveSettings(s: Settings) {
       close_time: s.close_time,
       opening_biz_cents: s.opening_biz_cents,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      activity: s.activity,
+      has_employee: s.has_employee,
+      kept_reports: s.kept_reports,
+      dasn_done: s.dasn_done,
+      track_limit: s.track_limit,
+      limit_year: s.limit_year,
+      revenue_before_cents: s.revenue_before_cents,
+      opened_month: s.opened_month,
     },
   });
 }

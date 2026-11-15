@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   db, getSettings, saveSettings, setConsent, addTx, addClosing, track, wipeLocal,
   defaultSettings, type Settings, type Tx, type Closing, type Drawer, type TxType,
@@ -9,9 +9,11 @@ import { fmt, fmt0, toCents, today, monthKey } from '@/lib/money';
 import { startAutoSync, syncNow, pullAll } from '@/lib/sync';
 import { enablePush, pushSupported } from '@/lib/push';
 import { supabase, CONTACT } from '@/lib/supabase';
+import { yearLimit, revenueYear, monthlyReport, annualSummary, ACT_LABEL, monthName, prevMonth, PORTAL_SIMPLES, REVENUE_CATS } from '@/lib/mei';
+import type { Activity } from '@/lib/db';
 
-type Screen = 'welcome' | 'consent' | 'setup' | 'home' | 'add' | 'close' | 'pay' | 'month' | 'more' | 'login';
-const TABBED: Screen[] = ['home', 'close', 'month', 'more'];
+type Screen = 'welcome' | 'consent' | 'setup' | 'home' | 'add' | 'close' | 'pay' | 'month' | 'more' | 'login' | 'obrig';
+const TABBED: Screen[] = ['home', 'close', 'month', 'more', 'obrig'];
 
 const CATS: Record<TxType, Record<Drawer, string[]>> = {
   in: { biz: ['Venda', 'Recebimento', 'Outro'], home: ['Pagar a mim', 'Outro'] },
@@ -79,6 +81,8 @@ export default function App() {
   const parcel = Math.round(s.salary_cents / s.pay_per_month);
 
   return (
+    <div className={'shell' + (TABBED.includes(screen) ? ' with-side' : '')}>
+      {TABBED.includes(screen) && <Side screen={screen} go={go} name={s.business_name} />}
     <div className="app">
       {screen === 'welcome' && <Welcome go={go} />}
       {screen === 'consent' && <Consent go={go} onAnswer={async (a) => { await setConsent(a); await reload(); go('setup'); }} />}
@@ -86,10 +90,10 @@ export default function App() {
         <Setup s={s} go={go} onSave={async (n) => { await saveSettings({ ...n, onboarded: true }); await reload(); void track('setup_done'); go('home'); say('Pronto. Vamos te lembrar às ' + n.close_time + '.'); }} />
       )}
       {screen === 'home' && (
-        <Home s={s} calc={calc} txs={txs.filter((t) => t.day === d0).reverse()} go={go} parcel={parcel} />
+        <Home s={s} calc={calc} txs={txs.filter((t) => t.day === d0).reverse()} go={go} parcel={parcel} allTx={txs} />
       )}
       {screen === 'add' && (
-        <Add go={go} onSave={async (t) => { await addTx({ ...t, day: d0 }); void track('tx_add', { drawer: t.drawer, type: t.type, category: t.category }); await reload(); go('home'); say((t.type === 'in' ? 'Anotado: entrou ' : 'Anotado: saiu ') + fmt(t.cents) + '.'); }} />
+        <Add go={go} defaultActivity={s.activity} onSave={async (t) => { await addTx({ ...t, day: d0 }); void track('tx_add', { drawer: t.drawer, type: t.type, category: t.category }); await reload(); go('home'); say((t.type === 'in' ? 'Anotado: entrou ' : 'Anotado: saiu ') + fmt(t.cents) + '.'); }} />
       )}
       {screen === 'close' && (
         <Close expected={calc.biz} closedDays={calc.closedDays} go={go}
@@ -125,9 +129,14 @@ export default function App() {
           txs={txs} />
       )}
       {screen === 'login' && <Login go={go} />}
+      {screen === 'obrig' && (
+        <Obrig s={s} txs={txs} go={go} say={say}
+          onSave={async (n) => { await saveSettings(n); await reload(); }} />
+      )}
 
       {toast && <div className="toast on" role="status">{toast}</div>}
       {TABBED.includes(screen) && <Tabs screen={screen} go={go} />}
+    </div>
     </div>
   );
 }
@@ -149,7 +158,7 @@ function Top({ title, back, go }: { title: string; back?: Screen; go: (s: Screen
 
 function Welcome({ go }: { go: (s: Screen) => void }) {
   return (
-    <div className="scroll" style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+    <div className="scroll narrow welcome" style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
       <div className="brand"><span className="logo" aria-hidden="true"><i /><i /></span>Caixa do MEI</div>
       <p className="lead">Saiba quanto entrou, quanto saiu e quanto pode tirar para você.</p>
       <p className="muted">Cinco minutos por dia. Sem planilha, sem contador, sem cartão.</p>
@@ -175,7 +184,7 @@ function Consent({ go, onAnswer }: { go: (s: Screen) => void; onAnswer: (a: bool
   return (
     <>
       <Top title="Este app faz parte de uma pesquisa" back="welcome" go={go} />
-      <div className="scroll">
+      <div className="scroll narrow">
         <p>O Caixa do MEI é gratuito e faz parte de uma pesquisa de mestrado que estuda se uma rotina simples ajuda o MEI a organizar o dinheiro.</p>
         <div className="card small">
           <p><b>Se você participar:</b> usamos dados de uso (por exemplo, em quantos dias você fechou o caixa), sem seu nome, para a pesquisa.</p>
@@ -205,7 +214,7 @@ function Setup({ s, go, onSave }: { s: Settings; go: (s: Screen) => void; onSave
   return (
     <>
       <Top title="Quatro perguntas rápidas" back="consent" go={go} />
-      <div className="scroll stack" style={{ gap: 18 }}>
+      <div className="scroll stack narrow" style={{ gap: 18 }}>
         <label className="field">Nome do seu negócio
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Salgados da Ana" />
         </label>
@@ -233,7 +242,12 @@ function Setup({ s, go, onSave }: { s: Settings; go: (s: Screen) => void; onSave
 
 type Calc = { biz: number; todayIn: number; todayOut: number; paid: number; mIn: number; mOut: number; mix: number; closedDays: Set<string>; closedToday: boolean };
 
-function Home({ s, calc, txs, go, parcel }: { s: Settings; calc: Calc; txs: Tx[]; go: (x: Screen) => void; parcel: number }) {
+function Home({ s, calc, txs, go, parcel, allTx }: { s: Settings; calc: Calc; txs: Tx[]; go: (x: Screen) => void; parcel: number; allTx: Tx[] }) {
+  const d = today(), dom = Number(d.slice(8, 10)), mo = Number(d.slice(5, 7)), yr = Number(d.slice(0, 4));
+  const pm = prevMonth(d.slice(0, 7));
+  const hadRevenue = allTx.some((t) => t.day.slice(0, 7) === pm);
+  const reportDue = dom <= 20 && hadRevenue && !s.kept_reports.includes(pm);
+  const dasnDue = (mo === 4 || mo === 5) && !s.dasn_done.includes(yr - 1);
   const dias = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
   const now = new Date();
   const pct = s.salary_cents ? Math.min(100, (calc.paid / s.salary_cents) * 100) : 0;
@@ -247,6 +261,8 @@ function Home({ s, calc, txs, go, parcel }: { s: Settings; calc: Calc; txs: Tx[]
         <span className="offline"><i aria-hidden="true" />salvo no aparelho</span>
       </div>
       <div className="scroll">
+        <div className="grid2">
+        <div>
         <div className="drawer biz">
           <div className="lbl"><span className="dot biz" aria-hidden="true" />Gaveta do negócio</div>
           <div className="money big">{fmt(calc.biz)}</div>
@@ -262,12 +278,26 @@ function Home({ s, calc, txs, go, parcel }: { s: Settings; calc: Calc; txs: Tx[]
           <button className="in" onClick={() => { sessionStorage.setItem('add-type', 'in'); go('add'); }}>+ Entrou<small>venda, recebimento</small></button>
           <button className="out" onClick={() => { sessionStorage.setItem('add-type', 'out'); go('add'); }}>− Saiu<small>compra, conta, gasto</small></button>
         </div>
+        {reportDue && (
+          <div className="banner warnb">
+            <div><b>Relatório de receitas de {monthName(pm)} pronto</b><span className="small muted">Confira e guarde até o dia 20.</span></div>
+            <button className="go" onClick={() => go('obrig')}>Ver</button>
+          </div>
+        )}
+        {dasnDue && (
+          <div className="banner warnb">
+            <div><b>Declaração anual (DASN-SIMEI) de {yr - 1}</b><span className="small muted">Prazo: 31 de maio. Os números já estão prontos.</span></div>
+            <button className="go" onClick={() => go('obrig')}>Ver</button>
+          </div>
+        )}
         {!calc.closedToday && (
           <div className="banner">
             <div><b>Feche o caixa de hoje</b><span className="small muted">Leva 1 minuto</span></div>
             <button className="go" onClick={() => go('close')}>Fechar</button>
           </div>
         )}
+        </div>
+        <div className="card today">
         <h3>Hoje</h3>
         <ul className="list">
           {txs.length === 0 && <li className="muted small">Nada anotado hoje ainda.</li>}
@@ -279,18 +309,23 @@ function Home({ s, calc, txs, go, parcel }: { s: Settings; calc: Calc; txs: Tx[]
             </li>
           ))}
         </ul>
+        </div>
+        </div>
       </div>
     </>
   );
 }
 
-function Add({ go, onSave }: { go: (x: Screen) => void; onSave: (t: { type: TxType; drawer: Drawer; category: string; cents: number }) => void }) {
+function Add({ go, onSave, defaultActivity }: { go: (x: Screen) => void; defaultActivity: Activity; onSave: (t: { type: TxType; drawer: Drawer; category: string; cents: number; nf?: boolean; activity?: Activity }) => void }) {
   const initial = (typeof window !== 'undefined' && (sessionStorage.getItem('add-type') as TxType)) || 'in';
   const [type, setType] = useState<TxType>(initial);
   const [drawer, setDrawer] = useState<Drawer>('biz');
   const [digits, setDigits] = useState('');
   const [cat, setCat] = useState('');
+  const [nf, setNf] = useState(false);
+  const [act, setAct] = useState<Activity>(defaultActivity);
   const cents = parseInt(digits || '0', 10);
+  const isRev = type === 'in' && drawer === 'biz' && REVENUE_CATS.includes(cat);
   const key = (k: string) => {
     if (k === '⌫') setDigits(digits.slice(0, -1));
     else if (digits.length < 8) setDigits((digits + k).replace(/^0+/, ''));
@@ -298,7 +333,7 @@ function Add({ go, onSave }: { go: (x: Screen) => void; onSave: (t: { type: TxTy
   return (
     <>
       <Top title="Anotar" back="home" go={go} />
-      <div className="scroll">
+      <div className="scroll narrow">
         <div className="seg" role="group" aria-label="Tipo">
           <button aria-pressed={type === 'in'} onClick={() => { setType('in'); setCat(''); }}>Entrou</button>
           <button aria-pressed={type === 'out'} onClick={() => { setType('out'); setCat(''); }}>Saiu</button>
@@ -315,12 +350,25 @@ function Add({ go, onSave }: { go: (x: Screen) => void; onSave: (t: { type: TxTy
         <div className="chips">
           {CATS[type][drawer].map((c) => <button key={c} className="chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
         </div>
+        {isRev && (
+          <div className="revbox">
+            <div className="seg" role="group" aria-label="Nota fiscal">
+              <button aria-pressed={!nf} onClick={() => setNf(false)}>Sem nota</button>
+              <button aria-pressed={nf} onClick={() => setNf(true)}>Com nota</button>
+            </div>
+            <div className="chips small-chips" role="group" aria-label="Atividade">
+              {(['comercio', 'industria', 'servicos'] as Activity[]).map((a) => (
+                <button key={a} className="chip" aria-pressed={act === a} onClick={() => setAct(a)}>{ACT_LABEL[a]}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="keypad">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'].map((k) => (
             <button key={k} onClick={() => key(k)} aria-label={k === '⌫' ? 'Apagar' : k}>{k}</button>
           ))}
         </div>
-        <button className="btn primary" style={{ marginTop: 12 }} disabled={!(cents > 0 && cat)} onClick={() => onSave({ type, drawer, category: cat, cents })}>Salvar</button>
+        <button className="btn primary" style={{ marginTop: 12 }} disabled={!(cents > 0 && cat)} onClick={() => onSave(isRev ? { type, drawer, category: cat, cents, nf, activity: act } : { type, drawer, category: cat, cents })}>Salvar</button>
       </div>
     </>
   );
@@ -335,7 +383,7 @@ function Close({ expected, closedDays, go, onClose }: { expected: number; closed
   return (
     <>
       <Top title="Fechar o caixa" back="home" go={go} />
-      <div className="scroll">
+      <div className="scroll narrow">
         <div className="card">
           <div className="small muted">Pelo que você anotou, a gaveta do negócio deveria ter</div>
           <div className="money big">{fmt(expected)}</div>
@@ -364,7 +412,7 @@ function Pay({ biz, parcel, s, go, onPay }: { biz: number; parcel: number; s: Se
   return (
     <>
       <Top title="Pagar a si mesmo" back="month" go={go} />
-      <div className="scroll">
+      <div className="scroll narrow">
         <p>Hoje é dia de passar seu salário da gaveta do negócio para a da casa.</p>
         <div className="card" style={{ textAlign: 'center' }}>
           <div className="small muted">Valor desta vez</div>
@@ -389,7 +437,7 @@ function Month({ s, calc, txs, closings, go }: { s: Settings; calc: Calc; txs: T
   const now = Date.now();
   txs.forEach((t) => {
     if (t.drawer !== 'biz' || t.type !== 'in' || t.category === 'Pagar a mim' || t.category === 'Ajuste do caixa') return;
-    const ago = Math.floor((now - new Date(t.day + 'T12:00:00').getTime()) / 864e5);
+    const ago = Math.max(0, Math.round((new Date(today() + 'T12:00:00').getTime() - new Date(t.day + 'T12:00:00').getTime()) / 864e5));
     if (ago < 28) weeks[3 - Math.floor(ago / 7)] += t.cents;
   });
   const mx = Math.max(...weeks) || 1;
@@ -403,18 +451,24 @@ function Month({ s, calc, txs, closings, go }: { s: Settings; calc: Calc; txs: T
           <div className="kpi"><span>Sobrou no negócio</span><b className="money">{fmt0(calc.mIn - calc.mOut)}</b></div>
           <div className="kpi"><span>Caixa fechado</span><b className="money">{closedMonth} dias</b></div>
         </div>
-        <h3>Entradas por semana</h3>
+        <div className="grid2">
+        <div className="card">
+        <h3 style={{ marginTop: 0 }}>Entradas por semana</h3>
         <div className="chart" role="img" aria-label="Entradas das últimas quatro semanas">
           {weeks.map((v, i) => (
             <div key={i}><span className="money" style={{ fontSize: 11 }}>{fmt0(v)}</span><span className="b" style={{ height: Math.max(4, (v / mx) * 80) }} /><span>{i === 3 ? 'esta' : 3 - i + ' atrás'}</span></div>
           ))}
         </div>
-        <div className="drawer home" style={{ marginTop: 18 }}>
+        </div>
+        <div className="drawer home">
           <div className="lbl"><span className="dot home" aria-hidden="true" />Seu salário</div>
           <div className="money" style={{ fontSize: 20, marginTop: 4 }}>{fmt0(calc.paid)} de {fmt0(s.salary_cents)}</div>
           <div className="bar" aria-hidden="true"><i style={{ width: pct + '%' }} /></div>
           <button className="btn" style={{ marginTop: 8 }} onClick={() => go('pay')}>Pagar a mim mesmo</button>
         </div>
+        </div>
+        <LimitCard s={s} txs={txs} go={go} />
+        <button className="btn" style={{ marginTop: 12 }} onClick={() => go('obrig')}>Obrigações do MEI: relatório mensal e declaração anual</button>
         <p className="small muted" style={{ marginTop: 12 }}>Conta da casa paga com dinheiro do negócio este mês: <b>{calc.mix} {calc.mix === 1 ? 'vez' : 'vezes'}</b>. A meta é zero.</p>
       </div>
     </>
@@ -436,7 +490,7 @@ function More({ s, email, go, say, onConsent, onWipe, txs }: { s: Settings; emai
   return (
     <>
       <Top title="Mais" go={go} />
-      <div className="scroll">
+      <div className="scroll narrow">
         <h3 style={{ marginTop: 4 }}>Conta e lembretes</h3>
         <div className="card small">
           {supabase ? (
@@ -462,6 +516,8 @@ function More({ s, email, go, say, onConsent, onWipe, txs }: { s: Settings; emai
           <p>{s.consent_research ? 'Você participa da pesquisa. Seus dados de uso vão sem seu nome.' : 'Você usa o app sem participar da pesquisa.'}</p>
           <button className="btn" onClick={() => onConsent(!s.consent_research)}>{s.consent_research ? 'Sair da pesquisa' : 'Participar da pesquisa'}</button>
         </div>
+        <h3>Obrigações do MEI</h3>
+        <button className="btn" onClick={() => go('obrig')}>Relatório mensal, declaração anual e limite</button>
         <h3>Configuração</h3>
         <button className="btn" onClick={() => go('setup')}>Mudar salário, horário ou nome</button>
         <h3>Sobre</h3>
@@ -480,7 +536,7 @@ function Login({ go }: { go: (x: Screen) => void }) {
   return (
     <>
       <Top title="Entrar com e-mail" back="more" go={go} />
-      <div className="scroll stack" style={{ gap: 16 }}>
+      <div className="scroll stack narrow" style={{ gap: 16 }}>
         <p className="small muted">Sem senha: mandamos um código de 6 números para o seu e-mail.</p>
         <label className="field">Seu e-mail
           <input type="text" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value.trim())} />
@@ -506,6 +562,162 @@ function Login({ go }: { go: (x: Screen) => void }) {
         {err && <p className="err">{err}</p>}
       </div>
     </>
+  );
+}
+
+function LimitCard({ s, txs, go }: { s: Settings; txs: Tx[]; go: (x: Screen) => void }) {
+  if (!s.track_limit) return null;
+  const yr = new Date().getFullYear();
+  const lim = yearLimit(yr, s.limit_year === yr ? s.opened_month : null);
+  const used = revenueYear(txs, yr) + (s.limit_year === yr ? s.revenue_before_cents : 0);
+  const pct = Math.min(100, (used / lim) * 100);
+  const cls = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : 'ok';
+  return (
+    <div className="card limit" style={{ marginTop: 18 }}>
+      <div className="lbl"><b>Limite do MEI em {yr}</b><button className="linkbtn" onClick={() => go('obrig')}>ajustar</button></div>
+      <div className="money" style={{ fontSize: 20, marginTop: 6 }}>{fmt0(used)} de {fmt0(lim)}</div>
+      <div className={'bar limitbar ' + cls} aria-hidden="true"><i style={{ width: pct + '%' }} /></div>
+      <div className="small">{pct >= 100 ? 'Passou do limite. Fale com um contador sobre o desenquadramento.' : pct >= 80 ? 'Atenção: já usou ' + Math.round(pct) + '% do limite do ano.' : 'Usado: ' + Math.round(pct) + '% do limite do ano.'}</div>
+    </div>
+  );
+}
+
+function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Screen) => void; say: (t: string) => void; onSave: (n: Settings) => Promise<void> }) {
+  const now = today();
+  const yr = Number(now.slice(0, 4));
+  const curMonth = now.slice(0, 7);
+  const months = Array.from(new Set(txs.filter((t) => !t.deleted).map((t) => t.day.slice(0, 7)))).filter((m) => m < curMonth).sort().reverse().slice(0, 12);
+  const [open, setOpen] = useState<string | null>(null);
+  const [limOn, setLimOn] = useState(s.track_limit);
+  const [before, setBefore] = useState(s.revenue_before_cents ? String(s.revenue_before_cents / 100) : '');
+  const [openedThisYear, setOpenedThisYear] = useState(s.limit_year === yr && !!s.opened_month);
+  const [openedMonth, setOpenedMonth] = useState(s.opened_month ?? Number(now.slice(5, 7)));
+  const dasnYear = yr - 1;
+  const ann = annualSummary(txs, dasnYear, s);
+  const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'];
+  return (
+    <>
+      <Top title="Obrigações do MEI" back="more" go={go} />
+      <div className="scroll narrow obrig">
+        <p className="small muted">O app soma as vendas que você anotou (o que entrou no negócio como venda ou recebimento) e deixa os números prontos. Quem entrega a declaração é você, no portal do governo.</p>
+
+        <h3>Atividade principal</h3>
+        <div className="chips" role="group" aria-label="Atividade principal">
+          {(['comercio', 'industria', 'servicos'] as Activity[]).map((a) => (
+            <button key={a} className="chip" aria-pressed={s.activity === a} onClick={() => onSave({ ...s, activity: a })}>{ACT_LABEL[a]}</button>
+          ))}
+        </div>
+        <p className="small muted" style={{ marginTop: 6 }}>É a opção que já vem marcada ao anotar uma venda. Dá para trocar venda a venda.</p>
+
+        <h3>Relatório mensal das receitas</h3>
+        <p className="small">Preencher até o dia 20 do mês seguinte e guardar. Não é enviado a ninguém, mas deve ser apresentado se for pedido.</p>
+        {months.length === 0 && <p className="small muted">Ainda não há meses fechados com lançamentos.</p>}
+        <ul className="list">
+          {months.map((m) => {
+            const r = monthlyReport(txs, m, s);
+            const kept = s.kept_reports.includes(m);
+            return (
+              <li key={m} style={{ flexWrap: 'wrap' }}>
+                <div className="desc"><b>{monthName(m, true)}</b><span>{fmt(r.total)} · {kept ? 'guardado' : 'pendente'}</span></div>
+                <button className="btn" style={{ width: 'auto', minHeight: 40 }} onClick={() => setOpen(open === m ? null : m)}>{open === m ? 'Fechar' : 'Ver'}</button>
+                {open === m && (
+                  <div className="report" style={{ width: '100%' }}>
+                    <div className="print-area">
+                      <p className="small"><b>Relatório Mensal das Receitas Brutas</b> · {s.business_name} · <span>{monthName(m, true)}</span></p>
+                      <table className="rtable">
+                        <tbody>
+                          {(['comercio', 'industria', 'servicos'] as Activity[]).map((a, i) => (
+                            <Fragment key={a}>
+                              <tr key={a + 's'}><th>{ROMAN[i * 3]}</th><td>{ACT_LABEL[a]}: sem nota fiscal</td><td className="money">{fmt(r.rows[a].sem)}</td></tr>
+                              <tr key={a + 'c'}><th>{ROMAN[i * 3 + 1]}</th><td>{ACT_LABEL[a]}: com nota fiscal</td><td className="money">{fmt(r.rows[a].com)}</td></tr>
+                              <tr key={a + 't'} className="sub"><th>{ROMAN[i * 3 + 2]}</th><td>{ACT_LABEL[a]}: total</td><td className="money">{fmt(r.rows[a].sem + r.rows[a].com)}</td></tr>
+                            </Fragment>
+                          ))}
+                          <tr className="tot"><th>X</th><td>Total geral das receitas brutas no mês</td><td className="money">{fmt(r.total)}</td></tr>
+                        </tbody>
+                      </table>
+                      <p className="small muted">Valores somados pelo Caixa do MEI a partir das vendas anotadas (regime de caixa). Confira antes de assinar e guardar.</p>
+                    </div>
+                    <div className="row" style={{ marginTop: 10 }}>
+                      <button className="btn" onClick={() => window.print()}>Imprimir ou salvar PDF</button>
+                      <button className="btn primary" onClick={async () => {
+                        const k = kept ? s.kept_reports.filter((x) => x !== m) : [...s.kept_reports, m];
+                        await onSave({ ...s, kept_reports: k }); say(kept ? 'Marcado como pendente.' : 'Relatório marcado como guardado.');
+                      }}>{kept ? 'Desmarcar guardado' : 'Marquei como guardado'}</button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <h3>Declaração anual (DASN-SIMEI) de {dasnYear}</h3>
+        <div className="card">
+          <p className="small">Entrega até 31 de maio de {yr}, mesmo sem faturamento. Atraso gera multa.</p>
+          <div className="kv"><span>Receita bruta total</span><b className="money">{fmt(ann.total)}</b></div>
+          <div className="kv"><span>Comércio e indústria</span><b className="money">{fmt(ann.comInd + (ann.before && s.activity !== 'servicos' ? ann.before : 0))}</b></div>
+          <div className="kv"><span>Serviços</span><b className="money">{fmt(ann.serv + (ann.before && s.activity === 'servicos' ? ann.before : 0))}</b></div>
+          <label className="check" style={{ marginTop: 10 }}><input type="checkbox" checked={s.has_employee} onChange={(e) => onSave({ ...s, has_employee: e.target.checked })} /> Tive empregado no ano</label>
+          <p className="small muted" style={{ marginTop: 10 }}>O app não envia a declaração. Entre no Portal do Simples Nacional ou no App MEI com sua conta gov.br e informe esses números.</p>
+          <div className="row" style={{ marginTop: 6 }}>
+            <a className="btn" href={PORTAL_SIMPLES} target="_blank" rel="noreferrer">Abrir o Portal do Simples</a>
+            <button className="btn primary" onClick={async () => {
+              const done = s.dasn_done.includes(dasnYear);
+              await onSave({ ...s, dasn_done: done ? s.dasn_done.filter((y) => y !== dasnYear) : [...s.dasn_done, dasnYear] });
+              say(done ? 'Marcada como pendente.' : 'Declaração marcada como entregue.');
+            }}>{s.dasn_done.includes(dasnYear) ? 'Desmarcar entregue' : 'Já entreguei'}</button>
+          </div>
+        </div>
+
+        <h3>Acompanhar o limite de faturamento (opcional)</h3>
+        <div className="card">
+          <div className="toggle" style={{ borderTop: 0, paddingTop: 0 }}>
+            <div className="t"><b>Mostrar quanto do limite já usei</b><span>Aparece no resumo do mês, com aviso a partir de 80%.</span></div>
+            <button className="switch" role="switch" aria-checked={limOn} aria-label="Acompanhar o limite" onClick={() => setLimOn(!limOn)} />
+          </div>
+          {limOn && (
+            <div className="stack" style={{ gap: 14, marginTop: 8 }}>
+              <label className="field">Quanto o MEI já faturou em {yr} antes de usar o app?
+                <span className="hint">Some as vendas de janeiro até começar a anotar aqui. Pode ser um valor aproximado.</span>
+                <input type="number" inputMode="decimal" value={before} onChange={(e) => setBefore(e.target.value)} placeholder="0,00" />
+              </label>
+              <label className="check"><input type="checkbox" checked={openedThisYear} onChange={(e) => setOpenedThisYear(e.target.checked)} /> Abri o MEI em {yr}</label>
+              {openedThisYear && (
+                <label className="field">Mês de abertura
+                  <span className="hint">No ano de abertura, o limite é proporcional aos meses de atividade.</span>
+                  <select value={openedMonth} onChange={(e) => setOpenedMonth(Number(e.target.value))}>
+                    {['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'].map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
+                  </select>
+                </label>
+              )}
+              <p className="small muted">Limite de {yr}: {fmt0(yearLimit(yr, openedThisYear ? openedMonth : null))}{openedThisYear ? ' (proporcional)' : ''}. Em 2027 o teto sobe para R$ 110 mil e, em 2028, para R$ 140 mil (Lei Complementar 238/2026).</p>
+            </div>
+          )}
+          <button className="btn primary" style={{ marginTop: 12 }} onClick={async () => {
+            await onSave({ ...s, track_limit: limOn, limit_year: yr, revenue_before_cents: limOn ? toCents(before || '0') : 0, opened_month: limOn && openedThisYear ? openedMonth : null });
+            say(limOn ? 'Acompanhamento do limite ligado.' : 'Acompanhamento do limite desligado.');
+          }}>Salvar</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Side({ screen, go, name }: { screen: Screen; go: (x: Screen) => void; name: string }) {
+  const items: [Screen, string][] = [['home', 'Hoje'], ['close', 'Fechar o caixa'], ['month', 'Resumo do mês'], ['more', 'Mais']];
+  return (
+    <aside className="side" aria-label="Menu">
+      <div className="brand"><span className="logo" aria-hidden="true"><i /><i /></span>Caixa do MEI</div>
+      {name && <p className="small muted" style={{ margin: '6px 0 18px' }}>{name}</p>}
+      <nav className="side-nav">
+        {items.map(([id, label]) => (
+          <button key={id} onClick={() => go(id)} aria-current={screen === id ? 'page' : undefined}>{label}</button>
+        ))}
+      </nav>
+      <div style={{ flex: 1 }} />
+      <p className="small muted">Anote, separe o seu salário e feche o caixa: 5 minutos por dia.</p>
+    </aside>
   );
 }
 

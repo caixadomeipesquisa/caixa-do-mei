@@ -64,6 +64,14 @@ export async function pullAll() {
       opening_biz_cents: pr.data.opening_biz_cents ?? 0,
       consent_research: cur?.consent_research ?? pr.data.consent_research ?? null,
       onboarded: true,
+      activity: pr.data.activity ?? 'comercio',
+      has_employee: pr.data.has_employee ?? false,
+      kept_reports: pr.data.kept_reports ?? [],
+      dasn_done: pr.data.dasn_done ?? [],
+      track_limit: pr.data.track_limit ?? false,
+      limit_year: pr.data.limit_year ?? new Date().getFullYear(),
+      revenue_before_cents: pr.data.revenue_before_cents ?? 0,
+      opened_month: pr.data.opened_month ?? null,
     });
   }
 }

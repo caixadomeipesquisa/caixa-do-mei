@@ -13,7 +13,8 @@ Contato do projeto: caixadomeipesquisa@gmail.com
 3. **Fechar o caixa:** compara o saldo calculado com o que o MEI tem de fato e registra o ajuste.
 4. **Lembretes:** fechamento do caixa (Web Push, ou e-mail se não houver push) e DAS 5 dias antes do vencimento.
 5. **Resumo do mês:** entrou, saiu, sobrou, dias com caixa fechado, salário pago e contas da casa pagas pelo negócio.
-6. **Pesquisa:** consentimento no primeiro acesso, eventos de uso só de quem consentiu, sem nome; o usuário baixa (CSV) ou apaga os dados quando quiser.
+6. **Obrigações do MEI:** cada venda registra "com nota" ou "sem nota" e a atividade (comércio, indústria ou serviços). O app monta o Relatório Mensal das Receitas Brutas (linhas I a X do modelo oficial), lembra de conferir e guardar até o dia 20, prepara os números da DASN-SIMEI (até 31 de maio) e, como opção, acompanha o limite anual de faturamento com a receita anterior ao uso do app. O app não transmite a declaração: o MEI entrega no Portal do Simples ou no App MEI.
+7. **Pesquisa:** consentimento no primeiro acesso, eventos de uso só de quem consentiu, sem nome; o usuário baixa (CSV) ou apaga os dados quando quiser.
 
 Fora da versão 0.1, de propósito: IA, integração bancária, nota fiscal, várias empresas.
 
@@ -46,7 +47,7 @@ Tudo com a conta do projeto (caixadomeipesquisa@gmail.com), separada de qualquer
 
 ### 2. Supabase (plano gratuito)
 1. Crie a organização e o projeto `caixa-do-mei`, região **South America (São Paulo)**.
-2. SQL Editor: rode `supabase/migrations/0001_init.sql`.
+2. SQL Editor: rode `supabase/migrations/0001_init.sql` e depois `supabase/migrations/0003_obrigacoes.sql`.
 3. Authentication › Providers › Email: deixe ligado e **desligue "Confirm email"**; em Email Templates › Magic Link, use o código `{{ .Token }}` no corpo (o app pede o código de 6 números).
 4. Authentication › URL Configuration: Site URL = endereço final (ex.: `https://caixadomei.com.br`).
 5. Gere as chaves de push: `npx web-push generate-vapid-keys`.
