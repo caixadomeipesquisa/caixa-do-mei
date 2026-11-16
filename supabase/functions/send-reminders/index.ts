@@ -2,12 +2,25 @@
 // Chamada pelo pg_cron a cada 15 minutos (migração 0002).
 // - Fechar o caixa: no horário escolhido pelo usuário, se ainda não fechou hoje (Web Push; sem push, e-mail).
 // - DAS: 5 dias antes do vencimento, por e-mail (Brevo) e push.
-// Segredos (Supabase > Edge Functions > Secrets): VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
+// Segredos (Supabase > Edge Functions > Secrets): CRON_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
 // BREVO_API_KEY, BREVO_SENDER_EMAIL, BREVO_SENDER_NAME, APP_URL.
+// Publicar com a verificação de JWT desligada: quem autoriza a chamada é o cabeçalho x-cron-secret.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3';
 
-const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+// Chave de servidor: a legada (service_role) ou a nova (sb_secret_), injetadas pelo Supabase.
+function serverKey(): string {
+  const legacy = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (legacy) return legacy;
+  const raw = Deno.env.get('SUPABASE_SECRET_KEYS') ?? '';
+  try {
+    const v = JSON.parse(raw);
+    if (typeof v === 'string') return v;
+    if (Array.isArray(v)) return String(v[0]);
+    return String(Object.values(v)[0]);
+  } catch { return raw; }
+}
+const supabase = createClient(Deno.env.get('SUPABASE_URL')!, serverKey());
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://caixadomei.com.br';
 
 webpush.setVapidDetails(
@@ -60,7 +73,9 @@ async function email(to: string, subject: string, text: string) {
   return res.ok;
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const secret = Deno.env.get('CRON_SECRET');
+  if (!secret || req.headers.get('x-cron-secret') !== secret) return new Response('unauthorized', { status: 401 });
   const { data: profiles, error } = await supabase.from('profiles').select('id, close_time, timezone, das_day');
   if (error) return new Response(error.message, { status: 500 });
   let sent = 0;

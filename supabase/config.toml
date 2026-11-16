@@ -1,0 +1,3 @@
+# Configuração usada pelo comando "supabase functions deploy".
+[functions.send-reminders]
+verify_jwt = false

@@ -13,6 +13,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  interactiveWidget: 'resizes-content', // com o teclado aberto, a tela encolhe e o botão fica visível
   themeColor: '#1f6b4f',
 };
 

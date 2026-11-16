@@ -55,11 +55,12 @@ Tudo com a conta do projeto (caixadomeipesquisa@gmail.com), separada de qualquer
 ### 2. Supabase (plano gratuito)
 1. Crie a organização e o projeto `caixa-do-mei`, região **South America (São Paulo)**.
 2. SQL Editor: rode `supabase/migrations/0001_init.sql`, depois `0003_obrigacoes.sql` e `0004_mei_rules.sql`.
-3. Authentication › Providers › Email: deixe ligado e **desligue "Confirm email"**; em Email Templates › Magic Link, use o código `{{ .Token }}` no corpo (o app pede o código de 6 números).
+3. Authentication › Providers › Email: deixe ligado e **desligue "Confirm email"**; em Email Templates, cole `supabase/templates/codigo-de-acesso.html` no **Magic Link** e também no **Confirm signup** (assunto: `Seu código de acesso ao Caixa do MEI`). O app pede o código (`{{ .Token }}`), não o link. Em Authentication › Providers › Email, deixe **Email OTP Length = 6** (o app aceita de 6 a 10 números, mas 6 é mais fácil de digitar).
 4. Authentication › URL Configuration: Site URL = endereço final (ex.: `https://caixadomei.com.br`).
-5. Gere as chaves de push: `npx web-push generate-vapid-keys`.
-6. Edge Functions: publique `supabase/functions/send-reminders` (`supabase functions deploy send-reminders`) e cadastre os segredos: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:caixadomeipesquisa@gmail.com`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME=Caixa do MEI`, `APP_URL`.
-7. Database › Extensions: ligue `pg_cron` e `pg_net`; guarde a service role key no Vault (`service_role_key`) e rode `supabase/migrations/0002_reminders_cron.sql` com o endereço do seu projeto.
+5. Gere as chaves de push: `npx web-push generate-vapid-keys` (a pública vai também para a Vercel).
+6. Edge Functions: crie `send-reminders` (pelo editor do painel, colando `supabase/functions/send-reminders/index.ts`, ou `supabase functions deploy send-reminders`) com a **verificação de JWT desligada** (`supabase/config.toml` já faz isso no deploy pela linha de comando).
+7. Edge Functions › Secrets: `CRON_SECRET` (uma senha longa inventada por você), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:caixadomeipesquisa@gmail.com`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME=Caixa do MEI`, `APP_URL`.
+8. SQL Editor: `select vault.create_secret('<a mesma senha do CRON_SECRET>', 'cron_secret');` e depois `supabase/migrations/0002_reminders_cron.sql`, trocando SEU-PROJETO.
 
 ### 3. Brevo
 1. Valide o remetente (o e-mail do projeto ou, depois, um do domínio caixadomei.com.br).

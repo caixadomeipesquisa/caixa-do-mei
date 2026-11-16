@@ -5,9 +5,9 @@ import {
   db, getSettings, saveSettings, setConsent, addTx, addClosing, track, wipeLocal,
   defaultSettings, type Settings, type Tx, type Closing, type Drawer, type TxType,
 } from '@/lib/db';
-import { fmt, fmt0, toCents, today, monthKey } from '@/lib/money';
+import { fmt, fmt0, today, monthKey } from '@/lib/money';
 import { startAutoSync, syncNow, pullAll, refreshRules } from '@/lib/sync';
-import { enablePush, pushSupported } from '@/lib/push';
+import { enablePush, pushSupported, pushStatus, disablePush, testNotification, type PushStatus } from '@/lib/push';
 import { supabase, CONTACT } from '@/lib/supabase';
 import { yearLimit, ruleFor, nextChange, coverage, revenueYear, monthlyReport, annualSummary, ACT_LABEL, monthName, prevMonth, PORTAL_SIMPLES, REVENUE_CATS } from '@/lib/mei';
 import type { Activity } from '@/lib/db';
@@ -88,7 +88,7 @@ export default function App() {
       {screen === 'welcome' && <Welcome go={go} />}
       {screen === 'consent' && <Consent go={go} onAnswer={async (a) => { await setConsent(a); await reload(); go('setup'); }} />}
       {screen === 'setup' && (
-        <Setup s={s} go={go} onSave={async (n) => { await saveSettings({ ...n, onboarded: true }); await reload(); void track('setup_done'); go('home'); say('Pronto. Vamos te lembrar às ' + n.close_time + '.'); }} />
+        <Setup s={s} go={go} onSave={async (n) => { await saveSettings({ ...n, onboarded: true }); await reload(); void track('setup_done'); go('home'); say((await pushStatus().catch(() => 'off')) === 'on' ? 'Pronto. Vamos te lembrar às ' + n.close_time + '.' : 'Pronto. Para ser lembrado às ' + n.close_time + ', ligue os lembretes em Mais.'); }} />
       )}
       {screen === 'home' && (
         <Home s={s} calc={calc} txs={txs.filter((t) => t.day === d0).reverse()} go={go} parcel={parcel} allTx={txs} />
@@ -206,26 +206,43 @@ function Consent({ go, onAnswer }: { go: (s: Screen) => void; onAnswer: (a: bool
   );
 }
 
+// Campo de valor com máscara: a pessoa digita só números e o valor se forma da direita para a esquerda,
+// como em caixa eletrônico (1 → R$ 0,01; 150 → R$ 1,50; 15000 → R$ 150,00). Guarda centavos.
+function MoneyInput({ value, onChange, allowEmpty = false, ariaLabel }: { value: number | null; onChange: (c: number | null) => void; allowEmpty?: boolean; ariaLabel?: string }) {
+  return (
+    <input
+      type="text" inputMode="numeric" autoComplete="off" className="money-input" aria-label={ariaLabel}
+      placeholder="R$ 0,00"
+      value={value === null ? '' : fmt(value)}
+      onChange={(e) => {
+        const d = e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 10);
+        onChange(d ? parseInt(d, 10) : allowEmpty ? null : 0);
+      }}
+      onFocus={(e) => { const el = e.target; setTimeout(() => el.select(), 0); }}
+    />
+  );
+}
+
 function Setup({ s, go, onSave }: { s: Settings; go: (s: Screen) => void; onSave: (n: Settings) => void }) {
   const [name, setName] = useState(s.business_name);
-  const [pay, setPay] = useState(String(s.salary_cents / 100));
+  const [pay, setPay] = useState<number | null>(s.salary_cents || null);
   const [freq, setFreq] = useState<1 | 2 | 4>(s.pay_per_month);
   const [time, setTime] = useState(s.close_time);
-  const [open, setOpen] = useState(s.opening_biz_cents ? String(s.opening_biz_cents / 100) : '');
+  const [open, setOpen] = useState<number | null>(s.opening_biz_cents || null);
   return (
     <>
       <Top title="Quatro perguntas rápidas" back="consent" go={go} />
-      <div className="scroll stack narrow" style={{ gap: 18 }}>
+      <div className="scroll with-savebar stack narrow" style={{ gap: 18 }}>
         <label className="field">Nome do seu negócio
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Salgados da Ana" />
         </label>
         <label className="field">Quanto tem hoje no negócio?
           <span className="hint">Dinheiro em mãos mais o saldo da conta do negócio.</span>
-          <input type="number" inputMode="decimal" value={open} onChange={(e) => setOpen(e.target.value)} placeholder="0,00" />
+          <MoneyInput value={open} onChange={setOpen} allowEmpty />
         </label>
         <label className="field">Quanto você quer tirar por mês para a casa?
           <span className="hint">Seu salário fixo. Dá para mudar depois.</span>
-          <input type="number" inputMode="decimal" value={pay} onChange={(e) => setPay(e.target.value)} />
+          <MoneyInput value={pay} onChange={setPay} allowEmpty />
         </label>
         <label className="field">De quanto em quanto tempo você se paga?
           <select value={freq} onChange={(e) => setFreq(Number(e.target.value) as 1 | 2 | 4)}>
@@ -235,7 +252,9 @@ function Setup({ s, go, onSave }: { s: Settings; go: (s: Screen) => void; onSave
         <label className="field">Que horas fechar o caixa?
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         </label>
-        <button className="btn primary" onClick={() => onSave({ ...s, business_name: name.trim() || 'Meu negócio', salary_cents: toCents(pay), pay_per_month: freq, close_time: time || '19:00', opening_biz_cents: toCents(open || '0') })}>Pronto</button>
+        <div className="savebar">
+          <button className="btn primary" onClick={() => onSave({ ...s, business_name: name.trim() || 'Meu negócio', salary_cents: pay ?? 0, pay_per_month: freq, close_time: time || '19:00', opening_biz_cents: open ?? 0 })}>Pronto</button>
+        </div>
       </div>
     </>
   );
@@ -259,7 +278,10 @@ function Home({ s, calc, txs, go, parcel, allTx }: { s: Settings; calc: Calc; tx
           <div className="small muted">Hoje, {dias[now.getDay()]} {now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}</div>
           <h2>{s.business_name}</h2>
         </div>
-        <span className="offline"><i aria-hidden="true" />salvo no aparelho</span>
+        <div className="top-badges">
+          <span className="offline"><i aria-hidden="true" />salvo no aparelho</span>
+          <RemChip time={s.close_time} go={go} />
+        </div>
       </div>
       <div className="scroll">
         <div className="grid2">
@@ -334,7 +356,7 @@ function Add({ go, onSave, defaultActivity }: { go: (x: Screen) => void; default
   return (
     <>
       <Top title="Anotar" back="home" go={go} />
-      <div className="scroll narrow">
+      <div className="scroll with-savebar narrow">
         <div className="seg" role="group" aria-label="Tipo">
           <button aria-pressed={type === 'in'} onClick={() => { setType('in'); setCat(''); }}>Entrou</button>
           <button aria-pressed={type === 'out'} onClick={() => { setType('out'); setCat(''); }}>Saiu</button>
@@ -369,15 +391,18 @@ function Add({ go, onSave, defaultActivity }: { go: (x: Screen) => void; default
             <button key={k} onClick={() => key(k)} aria-label={k === '⌫' ? 'Apagar' : k}>{k}</button>
           ))}
         </div>
-        <button className="btn primary" style={{ marginTop: 12 }} disabled={!(cents > 0 && cat)} onClick={() => onSave(isRev ? { type, drawer, category: cat, cents, nf, activity: act } : { type, drawer, category: cat, cents })}>Salvar</button>
+        <div className="savebar">
+          <button className="btn primary" disabled={!(cents > 0 && cat)} onClick={() => onSave(isRev ? { type, drawer, category: cat, cents, nf, activity: act } : { type, drawer, category: cat, cents })}>
+            {cents > 0 && cat ? 'Salvar ' + fmt(cents) : !cents ? 'Digite o valor' : 'Escolha o que foi'}
+          </button>
+        </div>
       </div>
     </>
   );
 }
 
 function Close({ expected, closedDays, go, onClose }: { expected: number; closedDays: Set<string>; go: (x: Screen) => void; onClose: (counted: number | null) => void }) {
-  const [real, setReal] = useState('');
-  const counted = real.trim() ? toCents(real) : null;
+  const [counted, setCounted] = useState<number | null>(null);
   const diff = counted === null ? null : counted - expected;
   const last14 = Array.from({ length: 14 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (13 - i)); return today(d); });
   const n = last14.filter((d) => closedDays.has(d)).length;
@@ -391,7 +416,7 @@ function Close({ expected, closedDays, go, onClose }: { expected: number; closed
         </div>
         <label className="field" style={{ marginTop: 16 }}>Quanto tem de verdade agora?
           <span className="hint">Some o dinheiro em mãos e o saldo da conta do negócio.</span>
-          <input type="number" inputMode="decimal" step="0.01" placeholder="0,00" value={real} onChange={(e) => setReal(e.target.value)} />
+          <MoneyInput value={counted} onChange={setCounted} allowEmpty />
         </label>
         {diff !== null && (
           Math.abs(diff) < 100
@@ -476,6 +501,65 @@ function Month({ s, calc, txs, closings, go }: { s: Settings; calc: Calc; txs: T
   );
 }
 
+// Selo no topo da tela inicial: mostra se os lembretes estão ligados neste celular.
+function RemChip({ time, go }: { time: string; go: (x: Screen) => void }) {
+  const [st, setSt] = useState<PushStatus | null>(null);
+  useEffect(() => { pushStatus().then(setSt).catch(() => setSt(null)); }, []);
+  if (st === 'on') return <button className="rem-chip on" onClick={() => go('more')} aria-label={'Lembretes ligados, fechamento às ' + time}><BellIcon />Lembrete às {time}</button>;
+  if (st === 'off' || st === 'blocked') return <button className="rem-chip off" onClick={() => go('more')}><BellIcon />Lembretes desligados</button>;
+  return null;
+}
+function BellIcon() {
+  return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>;
+}
+
+// Mostra se os lembretes estão ligados neste celular e o que será lembrado.
+function Reminders({ s, email, go, say }: { s: Settings; email: string | null; go: (x: Screen) => void; say: (t: string) => void }) {
+  const [st, setSt] = useState<PushStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = useCallback(() => { pushStatus().then(setSt).catch(() => setSt('unsupported')); }, []);
+  useEffect(() => { refresh(); }, [refresh, email]);
+  if (!supabase || st === null || st === 'no-login') return null; // sem conta, o cartão de cima já convida a entrar
+  const items = (
+    <ul className="rem-list">
+      <li>Fechar o caixa: todo dia às <b>{s.close_time}</b>, se ainda não fechou</li>
+      <li>DAS: dia 15, às 9h (vence no dia 20)</li>
+      <li>Relatório mensal: dia 5, às 9h</li>
+      <li>Declaração anual (DASN-SIMEI): 2 e 25 de maio</li>
+    </ul>
+  );
+  if (st === 'on') return (
+    <div className="card small rem on" style={{ marginTop: 10 }}>
+      <div className="rem-head"><span className="rem-dot" aria-hidden="true" /><b>Lembretes ligados neste celular</b></div>
+      {items}
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="btn" onClick={async () => { say((await testNotification()) ? 'Notificação de teste enviada.' : 'Não deu para mostrar a notificação.'); }}>Testar aviso</button>
+        <button className="btn ghost" disabled={busy} onClick={async () => { setBusy(true); try { await disablePush(); say('Lembretes desligados neste celular.'); } finally { setBusy(false); refresh(); } }}>Desligar</button>
+      </div>
+    </div>
+  );
+  return (
+    <div className="card small rem off" style={{ marginTop: 10 }}>
+      <div className="rem-head"><span className="rem-dot" aria-hidden="true" /><b>Lembretes desligados neste celular</b></div>
+      {st === 'blocked' && <p>As notificações do Caixa do MEI estão bloqueadas. Libere nas configurações do navegador (cadeado ao lado do endereço › Notificações › Permitir) e volte aqui.</p>}
+      {st === 'unsupported' && <p>Este navegador não recebe notificações. No iPhone, instale o app na tela inicial (Compartilhar › Adicionar à Tela de Início) e abra por lá.</p>}
+      {st === 'off' && <p>Ligue para ser avisado de:</p>}
+      {st === 'off' && items}
+      {(st === 'off' || st === 'blocked') && (
+        <button className="btn primary" disabled={busy} aria-busy={busy} onClick={async () => {
+          setBusy(true);
+          try {
+            const r = await enablePush();
+            say(r === 'ok' ? 'Lembretes ligados. O fechamento será lembrado às ' + s.close_time + '.' : r === 'no-login' ? 'Entre com seu e-mail para receber lembretes.' : r === 'denied' ? 'As notificações estão bloqueadas no celular.' : 'Este navegador não recebe notificações.');
+          } catch { say('Não deu para ligar agora. Tente de novo.'); }
+          finally { setBusy(false); refresh(); }
+        }}>{busy ? <><span className="spin" aria-hidden="true" />Ligando…</> : 'Ligar lembretes'}</button>
+      )}
+      {email && <p className="muted" style={{ marginBottom: 0 }}>Mesmo com os avisos do celular desligados, o DAS e a declaração anual chegam por e-mail.</p>}
+    </div>
+  );
+}
+
 function More({ s, email, go, say, onConsent, onWipe, txs }: { s: Settings; email: string | null; go: (x: Screen) => void; say: (t: string) => void; onConsent: (a: boolean) => void; onWipe: () => void; txs: Tx[] }) {
   const [armed, setArmed] = useState(false);
   const exportCsv = () => {
@@ -499,12 +583,7 @@ function More({ s, email, go, say, onConsent, onWipe, txs }: { s: Settings; emai
               : <><p>Crie uma conta só com seu e-mail para guardar seus dados e receber lembretes.</p><button className="btn" onClick={() => go('login')}>Entrar com e-mail</button></>
           ) : <p style={{ margin: 0 }}>Modo local: seus dados ficam só neste aparelho.</p>}
         </div>
-        {pushSupported() && (
-          <button className="btn" style={{ marginTop: 10 }} onClick={async () => {
-            const r = await enablePush();
-            say(r === 'ok' ? 'Lembretes ligados. O fechamento será lembrado às ' + s.close_time + '.' : r === 'no-login' ? 'Entre com seu e-mail para receber lembretes.' : r === 'denied' ? 'As notificações estão bloqueadas no celular.' : 'Este navegador não recebe notificações.');
-          }}>Ligar lembretes no celular</button>
-        )}
+        <Reminders s={s} email={email} go={go} say={say} />
         <h3>Meus dados</h3>
         <div className="stack">
           <button className="btn" onClick={exportCsv}>Baixar meus lançamentos (CSV)</button>
@@ -533,37 +612,74 @@ function Login({ go }: { go: (x: Screen) => void }) {
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState<'' | 'send' | 'verify'>('');
+  const [wait, setWait] = useState(0); // segundos até poder pedir outro código
+  useEffect(() => {
+    if (wait <= 0) return;
+    const t = setTimeout(() => setWait(wait - 1), 1000);
+    return () => clearTimeout(t);
+  }, [wait]);
   if (!supabase) return null;
+  const send = async () => {
+    if (busy) return;
+    setErr(''); setBusy('send');
+    try {
+      const { error } = await supabase!.auth.signInWithOtp({ email: email.toLowerCase(), options: { shouldCreateUser: true } });
+      if (error) setErr(otpMessage(error)); else { setSent(true); setCode(''); setWait(60); }
+    } catch { setErr('Sem conexão com o servidor. Confira a internet e tente de novo.'); }
+    finally { setBusy(''); }
+  };
+  const verify = async () => {
+    if (busy) return;
+    setErr(''); setBusy('verify');
+    try {
+      const { error } = await supabase!.auth.verifyOtp({ email: email.toLowerCase(), token: code, type: 'email' });
+      if (error) setErr('Código inválido ou vencido. Confira os números ou peça outro.'); else go('home');
+    } catch { setErr('Sem conexão com o servidor. Confira a internet e tente de novo.'); }
+    finally { setBusy(''); }
+  };
   return (
     <>
       <Top title="Entrar com e-mail" back="more" go={go} />
       <div className="scroll stack narrow" style={{ gap: 16 }}>
-        <p className="small muted">Sem senha: mandamos um código de 6 números para o seu e-mail.</p>
+        <p className="small muted">Sem senha: mandamos um código para o seu e-mail.</p>
         <label className="field">Seu e-mail
-          <input type="text" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value.trim())} />
+          <input type="text" inputMode="email" autoComplete="email" value={email} disabled={sent} onChange={(e) => setEmail(e.target.value.trim())} />
         </label>
         {!sent ? (
-          <button className="btn primary" disabled={!email.includes('@')} onClick={async () => {
-            setErr('');
-            const { error } = await supabase!.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-            if (error) setErr('Não deu para enviar o código. Confira o e-mail e tente de novo.'); else setSent(true);
-          }}>Mandar código</button>
+          <button className="btn primary" disabled={!email.includes('@') || !!busy} aria-busy={busy === 'send'} onClick={send}>
+            {busy === 'send' ? <><span className="spin" aria-hidden="true" />Enviando o código…</> : 'Mandar código'}
+          </button>
         ) : (
           <>
+            <p className="small ok-note">Código enviado para <b>{email}</b>. Pode levar até 1 minuto; se não aparecer, olhe também o spam e as promoções.</p>
             <label className="field">Código que chegou no e-mail
-              <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+              <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} autoFocus
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                onKeyDown={(e) => { if (e.key === 'Enter' && code.length >= 6) verify(); }} />
             </label>
-            <button className="btn primary" disabled={code.length < 6} onClick={async () => {
-              setErr('');
-              const { error } = await supabase!.auth.verifyOtp({ email, token: code, type: 'email' });
-              if (error) setErr('Código inválido ou vencido.'); else go('home');
-            }}>Entrar</button>
+            <button className="btn primary" disabled={code.length < 6 || !!busy} aria-busy={busy === 'verify'} onClick={verify}>
+              {busy === 'verify' ? <><span className="spin" aria-hidden="true" />Conferindo…</> : 'Entrar'}
+            </button>
+            <div className="row">
+              <button className="btn ghost" disabled={wait > 0 || !!busy} onClick={send}>{wait > 0 ? `Pedir outro em ${wait}s` : 'Pedir outro código'}</button>
+              <button className="btn ghost" disabled={!!busy} onClick={() => { setSent(false); setCode(''); setErr(''); }}>Trocar e-mail</button>
+            </div>
           </>
         )}
-        {err && <p className="err">{err}</p>}
+        {err && <p className="err" role="alert">{err}</p>}
       </div>
     </>
   );
+}
+
+// Traduz o erro do envio do código para algo que a pessoa entende; o código técnico fica entre parênteses para suporte.
+function otpMessage(e: { status?: number; code?: string; message?: string }) {
+  const m = e.message ?? '';
+  if (e.status === 429 || /rate limit/i.test(m)) return 'Muitos pedidos de código em pouco tempo. Espere alguns minutos e peça de novo.';
+  if (/signups? not allowed/i.test(m)) return 'A criação de novas contas está fechada no momento.';
+  if (/fetch|network/i.test(m)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
+  return `Não deu para enviar o código. Tente de novo em alguns minutos. (${e.code || e.status || 'erro'})`;
 }
 
 function LimitCard({ s, txs, go }: { s: Settings; txs: Tx[]; go: (x: Screen) => void }) {
@@ -590,7 +706,7 @@ function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Sc
   const months = Array.from(new Set(txs.filter((t) => !t.deleted).map((t) => t.day.slice(0, 7)))).filter((m) => m < curMonth).sort().reverse().slice(0, 12);
   const [open, setOpen] = useState<string | null>(null);
   const [limOn, setLimOn] = useState(s.track_limit);
-  const [before, setBefore] = useState(s.limit_year === yr && s.revenue_before_cents ? String(s.revenue_before_cents / 100) : '');
+  const [before, setBefore] = useState<number | null>(s.limit_year === yr && s.revenue_before_cents ? s.revenue_before_cents : null);
   const [openedThisYear, setOpenedThisYear] = useState(s.limit_year === yr && !!s.opened_month);
   const [openedMonth, setOpenedMonth] = useState(s.opened_month ?? Number(now.slice(5, 7)));
   const dasnYear = yr - 1;
@@ -686,7 +802,7 @@ function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Sc
             <div className="stack" style={{ gap: 14, marginTop: 8 }}>
               <label className="field">Quanto o MEI já faturou em {yr} antes de usar o app?
                 <span className="hint">Some as vendas de janeiro até começar a anotar aqui. Pode ser um valor aproximado.</span>
-                <input type="number" inputMode="decimal" value={before} onChange={(e) => setBefore(e.target.value)} placeholder="0,00" />
+                <MoneyInput value={before} onChange={setBefore} allowEmpty />
               </label>
               <label className="check"><input type="checkbox" checked={openedThisYear} onChange={(e) => setOpenedThisYear(e.target.checked)} /> Abri o MEI em {yr}</label>
               {openedThisYear && (
@@ -701,7 +817,7 @@ function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Sc
             </div>
           )}
           <button className="btn primary" style={{ marginTop: 12 }} onClick={async () => {
-            await onSave({ ...s, track_limit: limOn, limit_year: yr, revenue_before_cents: limOn ? toCents(before || '0') : 0, opened_month: limOn && openedThisYear ? openedMonth : null });
+            await onSave({ ...s, track_limit: limOn, limit_year: yr, revenue_before_cents: limOn ? before ?? 0 : 0, opened_month: limOn && openedThisYear ? openedMonth : null });
             say(limOn ? 'Acompanhamento do limite ligado.' : 'Acompanhamento do limite desligado.');
           }}>Salvar</button>
         </div>

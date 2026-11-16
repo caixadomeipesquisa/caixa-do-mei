@@ -34,3 +34,34 @@ export async function enablePush(): Promise<'ok' | 'denied' | 'unsupported' | 'n
   }, { onConflict: 'endpoint' });
   return 'ok';
 }
+
+export type PushStatus = 'on' | 'off' | 'blocked' | 'unsupported' | 'no-login';
+
+/** Situação real dos lembretes neste aparelho: permissão do celular + inscrição ativa + conta. */
+export async function pushStatus(): Promise<PushStatus> {
+  if (!pushSupported()) return 'unsupported';
+  if (!supabase) return 'no-login';
+  const { data } = await supabase.auth.getSession();
+  if (!data.session?.user) return 'no-login';
+  if (Notification.permission === 'denied') return 'blocked';
+  if (Notification.permission !== 'granted') return 'off';
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg ? await reg.pushManager.getSubscription() : null;
+  return sub ? 'on' : 'off';
+}
+
+export async function disablePush(): Promise<void> {
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg ? await reg.pushManager.getSubscription() : null;
+  if (!sub) return;
+  if (supabase) await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+  await sub.unsubscribe();
+}
+
+/** Mostra uma notificação local, só para conferir que o celular exibe os avisos. */
+export async function testNotification(): Promise<boolean> {
+  if (!pushSupported() || Notification.permission !== 'granted') return false;
+  const reg = await navigator.serviceWorker.ready;
+  await reg.showNotification('Caixa do MEI', { body: 'Os lembretes estão ligados neste celular.', icon: '/icon-192.png', badge: '/icon-192.png' });
+  return true;
+}
