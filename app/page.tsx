@@ -19,6 +19,9 @@ const CATS: Record<TxType, Record<Drawer, string[]>> = {
   in: { biz: ['Venda', 'Recebimento', 'Outro'], home: ['Pagar a mim', 'Outro'] },
   out: { biz: ['Insumos', 'Transporte', 'Conta do negócio', 'DAS', 'Outro'], home: ['Mercado', 'Conta da casa', 'Outro'] },
 };
+// A coleta de dados para a pesquisa só abre depois da aprovação no comitê de ética (NEXT_PUBLIC_RESEARCH_OPEN=1).
+const RESEARCH_OPEN = process.env.NEXT_PUBLIC_RESEARCH_OPEN === '1';
+const TCLE_URL = process.env.NEXT_PUBLIC_TCLE_URL ?? '';
 const PAY_LABEL: Record<number, string> = { 4: 'toda semana', 2: 'a cada 15 dias', 1: 'uma vez por mês' };
 
 export default function App() {
@@ -86,9 +89,15 @@ export default function App() {
       {TABBED.includes(screen) && <Side screen={screen} go={go} name={s.business_name} />}
     <div className="app">
       {screen === 'welcome' && <Welcome go={go} />}
-      {screen === 'consent' && <Consent go={go} onAnswer={async (a) => { await setConsent(a); await reload(); go('setup'); }} />}
+      {screen === 'consent' && <Consent go={go} onAnswer={async (a) => { if (a !== null) await setConsent(a); await reload(); go('setup'); }} />}
       {screen === 'setup' && (
-        <Setup s={s} go={go} onSave={async (n) => { await saveSettings({ ...n, onboarded: true }); await reload(); void track('setup_done'); go('home'); say((await pushStatus().catch(() => 'off')) === 'on' ? 'Pronto. Vamos te lembrar às ' + n.close_time + '.' : 'Pronto. Para ser lembrado às ' + n.close_time + ', ligue os lembretes em Mais.'); }} />
+        <Setup s={s} go={go} onSave={async (n) => {
+          const editing = s.onboarded;
+          await saveSettings({ ...n, onboarded: true }); await reload();
+          if (editing) { go('more'); say('Configuração salva.'); return; }
+          void track('setup_done'); go('home');
+          say((await pushStatus().catch(() => 'off')) === 'on' ? 'Pronto. Vamos te lembrar às ' + n.close_time + '.' : 'Pronto. Para ser lembrado às ' + n.close_time + ', ligue os lembretes em Mais.');
+        }} />
       )}
       {screen === 'home' && (
         <Home s={s} calc={calc} txs={txs.filter((t) => t.day === d0).reverse()} go={go} parcel={parcel} allTx={txs} />
@@ -111,7 +120,10 @@ export default function App() {
       {screen === 'pay' && (
         <Pay biz={calc.biz} parcel={parcel} s={s} go={go}
           onPay={async () => {
-            const v = Math.min(parcel, Math.max(0, calc.biz));
+            if (!s.salary_cents) { say('Defina seu salário em Mais › Configuração.'); return; }
+            const remaining = Math.max(0, s.salary_cents - calc.paid);
+            if (remaining <= 0) { say('O salário deste mês já foi todo pago.'); return; }
+            const v = Math.min(parcel, remaining, Math.max(0, calc.biz));
             if (v <= 0) { say('Não há saldo no negócio para pagar agora.'); return; }
             await addTx({ day: d0, type: 'out', drawer: 'biz', category: 'Pagar a mim', cents: v });
             await addTx({ day: d0, type: 'in', drawer: 'home', category: 'Pagar a mim', cents: v });
@@ -123,13 +135,14 @@ export default function App() {
       {screen === 'more' && (
         <More s={s} email={email} go={go} say={say}
           onConsent={async (a) => { await setConsent(a); await reload(); say(a ? 'Obrigado por participar.' : 'Você saiu da pesquisa. O app continua igual.'); }}
+          onLogout={async () => { await supabase?.auth.signOut(); say('Você saiu da conta. Os dados continuam neste aparelho.'); }}
           onWipe={async () => {
-            if (supabase && email) await supabase.rpc('delete_my_data');
+            if (supabase && email) { await supabase.rpc('delete_my_data'); await supabase.auth.signOut(); }
             await wipeLocal(); await reload(); go('welcome'); say('Seus dados foram apagados.');
           }}
           txs={txs} />
       )}
-      {screen === 'login' && <Login go={go} />}
+      {screen === 'login' && <Login go={go} onboarded={s.onboarded} />}
       {screen === 'obrig' && (
         <Obrig s={s} txs={txs} go={go} say={say}
           onSave={async (n) => { await saveSettings(n); await reload(); }} />
@@ -159,10 +172,11 @@ function Top({ title, back, go }: { title: string; back?: Screen; go: (s: Screen
 
 function Welcome({ go }: { go: (s: Screen) => void }) {
   return (
-    <div className="scroll narrow welcome" style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+    <div className="scroll narrow welcome" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="brand"><span className="logo" aria-hidden="true"><i /><i /></span>Caixa do MEI</div>
+      <p className="research-tag">App gratuito de uma pesquisa de mestrado sobre o dinheiro do MEI</p>
       <p className="lead">Saiba quanto entrou, quanto saiu e quanto pode tirar para você.</p>
-      <p className="muted">Cinco minutos por dia. Sem planilha, sem contador, sem cartão.</p>
+      <p className="muted">Cinco minutos por dia. Sem planilha, sem anúncios, sem pedir senha de banco.</p>
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>As 3 regras</h3>
         <ol className="small" style={{ paddingLeft: 18, margin: 0 }}>
@@ -171,7 +185,7 @@ function Welcome({ go }: { go: (s: Screen) => void }) {
           <li><b>Feche o caixa:</b> todo dia, confira se o que tem bate com o anotado.</li>
         </ol>
       </div>
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: 1, minHeight: 16 }} />
       <div className="stack" style={{ marginTop: 20 }}>
         <button className="btn primary" onClick={() => go('consent')}>Começar</button>
         {supabase && <button className="btn ghost" onClick={() => go('login')}>Já uso, entrar</button>}
@@ -180,8 +194,25 @@ function Welcome({ go }: { go: (s: Screen) => void }) {
   );
 }
 
-function Consent({ go, onAnswer }: { go: (s: Screen) => void; onAnswer: (a: boolean) => void }) {
+function Consent({ go, onAnswer }: { go: (s: Screen) => void; onAnswer: (a: boolean | null) => void }) {
   const [ok, setOk] = useState(false);
+  if (!RESEARCH_OPEN) return (
+    <>
+      <Top title="Sobre a pesquisa" back="welcome" go={go} />
+      <div className="scroll narrow">
+        <p>O Caixa do MEI faz parte de uma pesquisa de mestrado sobre como uma rotina simples ajuda o MEI a organizar o dinheiro.</p>
+        <div className="card small">
+          <p><b>A pesquisa ainda não começou.</b> Por enquanto, nada do que você anota é usado em estudo.</p>
+          <p><b>Quando começar,</b> o app vai perguntar se você quer participar. Participar será opcional.</p>
+          <p style={{ margin: 0 }}><b>Nunca:</b> vendemos dados, mostramos anúncios ou pedimos senha de banco.</p>
+        </div>
+        <p className="small muted" style={{ marginTop: 10 }}>Dúvidas: <a href={'mailto:' + CONTACT}>{CONTACT}</a></p>
+        <div className="stack" style={{ marginTop: 20 }}>
+          <button className="btn primary" onClick={() => onAnswer(null)}>Entendi, começar</button>
+        </div>
+      </div>
+    </>
+  );
   return (
     <>
       <Top title="Este app faz parte de uma pesquisa" back="welcome" go={go} />
@@ -190,10 +221,10 @@ function Consent({ go, onAnswer }: { go: (s: Screen) => void; onAnswer: (a: bool
         <div className="card small">
           <p><b>Se você participar:</b> usamos dados de uso (por exemplo, em quantos dias você fechou o caixa), sem seu nome, para a pesquisa.</p>
           <p><b>Nunca:</b> vendemos dados, mostramos anúncios ou pedimos senha de banco.</p>
-          <p><b>Você pode sair</b> da pesquisa ou apagar seus dados quando quiser, em Mais › Meus dados.</p>
+          <p><b>Você pode sair</b> da pesquisa ou apagar seus dados quando quiser, em Mais.</p>
           <p style={{ margin: 0 }}><b>Dúvidas:</b> {CONTACT}</p>
         </div>
-        <p className="small muted" style={{ marginTop: 10 }}>[Texto completo do termo de consentimento aprovado pelo comitê de ética]</p>
+        {TCLE_URL && <p className="small" style={{ marginTop: 10 }}><a href={TCLE_URL} target="_blank" rel="noreferrer">Ler o termo de consentimento completo</a></p>}
         <label className="check" style={{ marginTop: 12 }}>
           <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> Li e aceito participar da pesquisa.
         </label>
@@ -231,7 +262,7 @@ function Setup({ s, go, onSave }: { s: Settings; go: (s: Screen) => void; onSave
   const [open, setOpen] = useState<number | null>(s.opening_biz_cents || null);
   return (
     <>
-      <Top title="Quatro perguntas rápidas" back="consent" go={go} />
+      <Top title={s.onboarded ? 'Configuração' : 'Quatro perguntas rápidas'} back={s.onboarded ? 'more' : 'consent'} go={go} />
       <div className="scroll with-savebar stack narrow" style={{ gap: 18 }}>
         <label className="field">Nome do seu negócio
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Salgados da Ana" />
@@ -253,7 +284,7 @@ function Setup({ s, go, onSave }: { s: Settings; go: (s: Screen) => void; onSave
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         </label>
         <div className="savebar">
-          <button className="btn primary" onClick={() => onSave({ ...s, business_name: name.trim() || 'Meu negócio', salary_cents: pay ?? 0, pay_per_month: freq, close_time: time || '19:00', opening_biz_cents: open ?? 0 })}>Pronto</button>
+          <button className="btn primary" onClick={() => onSave({ ...s, business_name: name.trim() || 'Meu negócio', salary_cents: pay ?? 0, pay_per_month: freq, close_time: time || '19:00', opening_biz_cents: open ?? 0 })}>{s.onboarded ? 'Salvar' : 'Pronto'}</button>
         </div>
       </div>
     </>
@@ -514,53 +545,53 @@ function BellIcon() {
 }
 
 // Mostra se os lembretes estão ligados neste celular e o que será lembrado.
-function Reminders({ s, email, go, say }: { s: Settings; email: string | null; go: (x: Screen) => void; say: (t: string) => void }) {
+function Reminders({ s, email, say }: { s: Settings; email: string | null; say: (t: string) => void }) {
   const [st, setSt] = useState<PushStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(() => { pushStatus().then(setSt).catch(() => setSt('unsupported')); }, []);
   useEffect(() => { refresh(); }, [refresh, email]);
   if (!supabase || st === null || st === 'no-login') return null; // sem conta, o cartão de cima já convida a entrar
-  const items = (
-    <ul className="rem-list">
-      <li>Fechar o caixa: todo dia às <b>{s.close_time}</b>, se ainda não fechou</li>
-      <li>DAS: dia 15, às 9h (vence no dia 20)</li>
-      <li>Relatório mensal: dia 5, às 9h</li>
-      <li>Declaração anual (DASN-SIMEI): 2 e 25 de maio</li>
-    </ul>
-  );
+  const what = <p className="small muted rem-what">Fechar o caixa às {s.close_time} · DAS no dia 15 · relatório no dia 5 · declaração anual em maio</p>;
   if (st === 'on') return (
-    <div className="card small rem on" style={{ marginTop: 10 }}>
-      <div className="rem-head"><span className="rem-dot" aria-hidden="true" /><b>Lembretes ligados neste celular</b></div>
-      {items}
-      <div className="row" style={{ marginTop: 8 }}>
-        <button className="btn" onClick={async () => { say((await testNotification()) ? 'Notificação de teste enviada.' : 'Não deu para mostrar a notificação.'); }}>Testar aviso</button>
+    <div className="card small rem on">
+      <div className="rem-head"><span className="rem-dot" aria-hidden="true" /><b>Lembretes ligados</b></div>
+      {what}
+      <div className="row">
+        <button className="btn" onClick={async () => { say((await testNotification()) ? 'Aviso de teste enviado.' : 'Não deu para mostrar o aviso.'); }}>Testar aviso</button>
         <button className="btn ghost" disabled={busy} onClick={async () => { setBusy(true); try { await disablePush(); say('Lembretes desligados neste celular.'); } finally { setBusy(false); refresh(); } }}>Desligar</button>
       </div>
     </div>
   );
   return (
-    <div className="card small rem off" style={{ marginTop: 10 }}>
-      <div className="rem-head"><span className="rem-dot" aria-hidden="true" /><b>Lembretes desligados neste celular</b></div>
-      {st === 'blocked' && <p>As notificações do Caixa do MEI estão bloqueadas. Libere nas configurações do navegador (cadeado ao lado do endereço › Notificações › Permitir) e volte aqui.</p>}
-      {st === 'unsupported' && <p>Este navegador não recebe notificações. No iPhone, instale o app na tela inicial (Compartilhar › Adicionar à Tela de Início) e abra por lá.</p>}
-      {st === 'off' && <p>Ligue para ser avisado de:</p>}
-      {st === 'off' && items}
-      {(st === 'off' || st === 'blocked') && (
+    <div className="card small rem off">
+      <div className="rem-head"><span className="rem-dot" aria-hidden="true" /><b>Lembretes desligados</b></div>
+      {st === 'blocked' ? <p className="small">O celular está bloqueando os avisos. Libere em: cadeado ao lado do endereço › Notificações › Permitir.</p>
+        : st === 'unsupported' ? <p className="small">Este navegador não mostra avisos. No iPhone, instale o app na tela inicial e abra por lá.</p>
+        : what}
+      {st !== 'unsupported' && (
         <button className="btn primary" disabled={busy} aria-busy={busy} onClick={async () => {
           setBusy(true);
           try {
             const r = await enablePush();
-            say(r === 'ok' ? 'Lembretes ligados. O fechamento será lembrado às ' + s.close_time + '.' : r === 'no-login' ? 'Entre com seu e-mail para receber lembretes.' : r === 'denied' ? 'As notificações estão bloqueadas no celular.' : 'Este navegador não recebe notificações.');
+            say(r === 'ok' ? 'Lembretes ligados.' : r === 'denied' ? 'O celular bloqueou os avisos.' : r === 'no-login' ? 'Entre com seu e-mail primeiro.' : 'Este navegador não mostra avisos.');
           } catch { say('Não deu para ligar agora. Tente de novo.'); }
           finally { setBusy(false); refresh(); }
         }}>{busy ? <><span className="spin" aria-hidden="true" />Ligando…</> : 'Ligar lembretes'}</button>
       )}
-      {email && <p className="muted" style={{ marginBottom: 0 }}>Mesmo com os avisos do celular desligados, o DAS e a declaração anual chegam por e-mail.</p>}
     </div>
   );
 }
 
-function More({ s, email, go, say, onConsent, onWipe, txs }: { s: Settings; email: string | null; go: (x: Screen) => void; say: (t: string) => void; onConsent: (a: boolean) => void; onWipe: () => void; txs: Tx[] }) {
+function Row({ title, sub, onClick, danger }: { title: string; sub?: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button className={'menu-row' + (danger ? ' danger' : '')} onClick={onClick}>
+      <span><b>{title}</b>{sub && <small>{sub}</small>}</span>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+    </button>
+  );
+}
+
+function More({ s, email, go, say, onConsent, onLogout, onWipe, txs }: { s: Settings; email: string | null; go: (x: Screen) => void; say: (t: string) => void; onConsent: (a: boolean) => void; onLogout: () => void; onWipe: () => void; txs: Tx[] }) {
   const [armed, setArmed] = useState(false);
   const exportCsv = () => {
     const rows = [['data', 'tipo', 'gaveta', 'categoria', 'valor']].concat(
@@ -568,46 +599,46 @@ function More({ s, email, go, say, onConsent, onWipe, txs }: { s: Settings; emai
     );
     const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\n');
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = 'caixa-do-mei.csv'; a.click();
+    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.href = url; a.download = 'caixa-do-mei.csv'; a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
     say('Arquivo baixado.');
   };
   return (
     <>
       <Top title="Mais" go={go} />
-      <div className="scroll narrow">
-        <h3 style={{ marginTop: 4 }}>Conta e lembretes</h3>
-        <div className="card small">
-          {supabase ? (
-            email ? <p style={{ margin: 0 }}>Entrou como <b>{email}</b>. Seus dados ficam guardados com segurança e aparecem em outro celular.</p>
-              : <><p>Crie uma conta só com seu e-mail para guardar seus dados e receber lembretes.</p><button className="btn" onClick={() => go('login')}>Entrar com e-mail</button></>
-          ) : <p style={{ margin: 0 }}>Modo local: seus dados ficam só neste aparelho.</p>}
+      <div className="scroll narrow more">
+        {supabase && !email && (
+          <div className="card small">
+            <p style={{ marginTop: 0 }}>Entre com seu e-mail para guardar seus dados na nuvem e receber lembretes.</p>
+            <button className="btn primary" onClick={() => go('login')}>Entrar com e-mail</button>
+          </div>
+        )}
+        <Reminders s={s} email={email} say={say} />
+
+        <div className="menu">
+          <Row title="Obrigações do MEI" sub="Relatório mensal, declaração anual e limite" onClick={() => go('obrig')} />
+          <Row title="Configuração" sub={`Salário de ${fmt0(s.salary_cents)} · fecha às ${s.close_time}`} onClick={() => go('setup')} />
+          <Row title="Baixar meus lançamentos" sub="Planilha (CSV)" onClick={exportCsv} />
         </div>
-        <Reminders s={s} email={email} go={go} say={say} />
-        <h3>Meus dados</h3>
-        <div className="stack">
-          <button className="btn" onClick={exportCsv}>Baixar meus lançamentos (CSV)</button>
-          <button className="btn" style={{ color: 'var(--bad)' }} onClick={() => { if (!armed) { setArmed(true); window.setTimeout(() => setArmed(false), 4000); return; } setArmed(false); onWipe(); }}>
-            {armed ? 'Toque de novo para apagar tudo' : 'Apagar todos os meus dados'}
-          </button>
+
+        <div className="menu">
+          {RESEARCH_OPEN ? (
+            <Row title={s.consent_research ? 'Você participa da pesquisa' : 'Participar da pesquisa'} sub={s.consent_research ? 'Toque para sair. O app continua igual.' : 'Opcional. Dados de uso, sem seu nome.'} onClick={() => onConsent(!s.consent_research)} />
+          ) : (
+            <div className="menu-note"><b>Pesquisa de mestrado</b><small>Ainda não começou. Quando começar, o app pergunta se você quer participar.</small></div>
+          )}
+          {email && <Row title="Sair da conta" sub={email} onClick={onLogout} />}
+          <Row danger title={armed ? 'Toque de novo para apagar tudo' : 'Apagar todos os meus dados'} sub={armed ? 'Não dá para desfazer.' : undefined} onClick={() => { if (!armed) { setArmed(true); window.setTimeout(() => setArmed(false), 4000); return; } setArmed(false); onWipe(); }} />
         </div>
-        <h3>Pesquisa</h3>
-        <div className="card small">
-          <p>{s.consent_research ? 'Você participa da pesquisa. Seus dados de uso vão sem seu nome.' : 'Você usa o app sem participar da pesquisa.'}</p>
-          <button className="btn" onClick={() => onConsent(!s.consent_research)}>{s.consent_research ? 'Sair da pesquisa' : 'Participar da pesquisa'}</button>
-        </div>
-        <h3>Obrigações do MEI</h3>
-        <button className="btn" onClick={() => go('obrig')}>Relatório mensal, declaração anual e limite</button>
-        <h3>Configuração</h3>
-        <button className="btn" onClick={() => go('setup')}>Mudar salário, horário ou nome</button>
-        <h3>Sobre</h3>
-        <p className="small muted">Caixa do MEI · protocolo aberto &quot;Manter simples&quot; · pesquisa de mestrado. Gratuito, sem anúncios. Dúvidas: <a href={'mailto:' + CONTACT}>{CONTACT}</a></p>
+
+        <p className="small muted" style={{ marginTop: 18 }}>Caixa do MEI · gratuito, sem anúncios · parte de uma pesquisa de mestrado. Dúvidas: <a href={'mailto:' + CONTACT}>{CONTACT}</a></p>
       </div>
     </>
   );
 }
 
-function Login({ go }: { go: (x: Screen) => void }) {
+function Login({ go, onboarded }: { go: (x: Screen) => void; onboarded: boolean }) {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
@@ -634,13 +665,17 @@ function Login({ go }: { go: (x: Screen) => void }) {
     setErr(''); setBusy('verify');
     try {
       const { error } = await supabase!.auth.verifyOtp({ email: email.toLowerCase(), token: code, type: 'email' });
-      if (error) setErr('Código inválido ou vencido. Confira os números ou peça outro.'); else go('home');
+      if (error) { setErr('Código inválido ou vencido. Confira os números ou peça outro.'); return; }
+      // Quem entra pela primeira vez traz a configuração da nuvem; se não houver, passa pelas perguntas.
+      await pullAll().catch(() => {});
+      const st = await getSettings();
+      go(st.onboarded || onboarded ? 'home' : 'consent');
     } catch { setErr('Sem conexão com o servidor. Confira a internet e tente de novo.'); }
     finally { setBusy(''); }
   };
   return (
     <>
-      <Top title="Entrar com e-mail" back="more" go={go} />
+      <Top title="Entrar com e-mail" back={onboarded ? 'more' : 'welcome'} go={go} />
       <div className="scroll stack narrow" style={{ gap: 16 }}>
         <p className="small muted">Sem senha: mandamos um código para o seu e-mail.</p>
         <label className="field">Seu e-mail
@@ -709,120 +744,142 @@ function Obrig({ s, txs, go, say, onSave }: { s: Settings; txs: Tx[]; go: (x: Sc
   const [before, setBefore] = useState<number | null>(s.limit_year === yr && s.revenue_before_cents ? s.revenue_before_cents : null);
   const [openedThisYear, setOpenedThisYear] = useState(s.limit_year === yr && !!s.opened_month);
   const [openedMonth, setOpenedMonth] = useState(s.opened_month ?? Number(now.slice(5, 7)));
-  const dasnYear = yr - 1;
+  // Jan a mai: vale a declaração do ano anterior (prazo 31/05). Jun a dez: os números do ano corrente vão se somando.
+  const inSeason = Number(now.slice(5, 7)) <= 5;
+  const dasnYear = inSeason ? yr - 1 : yr;
   const ann = annualSummary(txs, dasnYear, s);
   const cov = coverage(txs, dasnYear, s);
   const rule = ruleFor(yr);
   const nx = nextChange(yr);
   const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'];
+  const pend = months.filter((m) => !s.kept_reports.includes(m));
+  const dasnDone = s.dasn_done.includes(dasnYear);
+  const limNow = s.track_limit ? Math.round(((revenueYear(txs, yr) + (s.limit_year === yr ? s.revenue_before_cents : 0)) / yearLimit(yr, s.limit_year === yr ? s.opened_month : null)) * 100) : null;
+  const [sec, setSec] = useState<'' | 'rel' | 'dasn' | 'lim' | 'ativ'>(pend.length ? 'rel' : '');
+  const tog = (id: typeof sec) => setSec(sec === id ? '' : id);
   return (
     <>
       <Top title="Obrigações do MEI" back="more" go={go} />
       <div className="scroll narrow obrig">
-        <p className="small muted">O app soma as vendas que você anotou (o que entrou no negócio como venda ou recebimento) e deixa os números prontos. Quem entrega a declaração é você, no portal do governo.</p>
+        <p className="small muted" style={{ marginTop: 0 }}>O app soma as vendas que você anotou. Quem guarda e entrega é você.</p>
 
-        <h3>Atividade principal</h3>
-        <div className="chips" role="group" aria-label="Atividade principal">
-          {(['comercio', 'industria', 'servicos'] as Activity[]).map((a) => (
-            <button key={a} className="chip" aria-pressed={s.activity === a} onClick={() => onSave({ ...s, activity: a })}>{ACT_LABEL[a]}</button>
-          ))}
-        </div>
-        <p className="small muted" style={{ marginTop: 6 }}>É a opção que já vem marcada ao anotar uma venda. Dá para trocar venda a venda.</p>
-
-        <h3>Relatório mensal das receitas</h3>
-        <p className="small">Preencher até o dia 20 do mês seguinte e guardar. Não é enviado a ninguém, mas deve ser apresentado se for pedido.</p>
-        {months.length === 0 && <p className="small muted">Ainda não há meses fechados com lançamentos.</p>}
-        <ul className="list">
-          {months.map((m) => {
-            const r = monthlyReport(txs, m, s);
-            const kept = s.kept_reports.includes(m);
-            return (
-              <li key={m} style={{ flexWrap: 'wrap' }}>
-                <div className="desc"><b>{monthName(m, true)}</b><span>{fmt(r.total)} · {kept ? 'guardado' : 'pendente'}</span></div>
-                <button className="btn" style={{ width: 'auto', minHeight: 40 }} onClick={() => setOpen(open === m ? null : m)}>{open === m ? 'Fechar' : 'Ver'}</button>
-                {open === m && (
-                  <div className="report" style={{ width: '100%' }}>
-                    <div className="print-area">
-                      <p className="small"><b>Relatório Mensal das Receitas Brutas</b> · {s.business_name} · <span>{monthName(m, true)}</span></p>
-                      <table className="rtable">
-                        <tbody>
-                          {(['comercio', 'industria', 'servicos'] as Activity[]).map((a, i) => (
-                            <Fragment key={a}>
-                              <tr key={a + 's'}><th>{ROMAN[i * 3]}</th><td>{ACT_LABEL[a]}: sem nota fiscal</td><td className="money">{fmt(r.rows[a].sem)}</td></tr>
-                              <tr key={a + 'c'}><th>{ROMAN[i * 3 + 1]}</th><td>{ACT_LABEL[a]}: com nota fiscal</td><td className="money">{fmt(r.rows[a].com)}</td></tr>
-                              <tr key={a + 't'} className="sub"><th>{ROMAN[i * 3 + 2]}</th><td>{ACT_LABEL[a]}: total</td><td className="money">{fmt(r.rows[a].sem + r.rows[a].com)}</td></tr>
-                            </Fragment>
-                          ))}
-                          <tr className="tot"><th>X</th><td>Total geral das receitas brutas no mês</td><td className="money">{fmt(r.total)}</td></tr>
-                        </tbody>
-                      </table>
-                      <p className="small muted">Valores somados pelo Caixa do MEI a partir das vendas anotadas (regime de caixa). Confira antes de assinar e guardar.</p>
+        <OSec open={sec === 'rel'} onToggle={() => tog('rel')} title="Relatório mensal" tone={months.length === 0 ? 'muted' : pend.length ? 'warn' : 'ok'}
+          status={months.length === 0 ? 'Nenhum mês fechado ainda' : pend.length ? `${pend.length} ${pend.length === 1 ? 'mês pendente' : 'meses pendentes'} · prazo dia 20` : 'Todos guardados'}>
+          <p className="small muted" style={{ marginTop: 0 }}>Até o dia 20 do mês seguinte. Fica guardado com você; mostre se pedirem.</p>
+          <ul className="list">
+            {months.map((m) => {
+              const r = monthlyReport(txs, m, s);
+              const kept = s.kept_reports.includes(m);
+              return (
+                <li key={m} style={{ flexWrap: 'wrap' }}>
+                  <div className="desc"><b>{monthName(m, true)}</b><span className={kept ? '' : 'tone-warn'}>{fmt(r.total)} · {kept ? 'guardado' : 'pendente'}</span></div>
+                  <button className="btn" style={{ width: 'auto', minHeight: 40 }} onClick={() => setOpen(open === m ? null : m)}>{open === m ? 'Fechar' : 'Ver'}</button>
+                  {open === m && (
+                    <div className="report" style={{ width: '100%' }}>
+                      <div className="print-area">
+                        <p className="small"><b>Relatório Mensal das Receitas Brutas</b> · {s.business_name} · <span>{monthName(m, true)}</span></p>
+                        <table className="rtable">
+                          <tbody>
+                            {(['comercio', 'industria', 'servicos'] as Activity[]).map((a, i) => (
+                              <Fragment key={a}>
+                                <tr><th>{ROMAN[i * 3]}</th><td>{ACT_LABEL[a]}: sem nota fiscal</td><td className="money">{fmt(r.rows[a].sem)}</td></tr>
+                                <tr><th>{ROMAN[i * 3 + 1]}</th><td>{ACT_LABEL[a]}: com nota fiscal</td><td className="money">{fmt(r.rows[a].com)}</td></tr>
+                                <tr className="sub"><th>{ROMAN[i * 3 + 2]}</th><td>{ACT_LABEL[a]}: total</td><td className="money">{fmt(r.rows[a].sem + r.rows[a].com)}</td></tr>
+                              </Fragment>
+                            ))}
+                            <tr className="tot"><th>X</th><td>Total geral das receitas brutas no mês</td><td className="money">{fmt(r.total)}</td></tr>
+                          </tbody>
+                        </table>
+                        <p className="small muted">Somado pelo Caixa do MEI a partir das vendas anotadas. Confira antes de assinar.</p>
+                      </div>
+                      <div className="row" style={{ marginTop: 10 }}>
+                        <button className="btn" onClick={() => window.print()}>Imprimir ou PDF</button>
+                        <button className="btn primary" onClick={async () => {
+                          const k = kept ? s.kept_reports.filter((x) => x !== m) : [...s.kept_reports, m];
+                          await onSave({ ...s, kept_reports: k }); say(kept ? 'Marcado como pendente.' : 'Relatório guardado.');
+                        }}>{kept ? 'Desmarcar' : 'Guardei'}</button>
+                      </div>
                     </div>
-                    <div className="row" style={{ marginTop: 10 }}>
-                      <button className="btn" onClick={() => window.print()}>Imprimir ou salvar PDF</button>
-                      <button className="btn primary" onClick={async () => {
-                        const k = kept ? s.kept_reports.filter((x) => x !== m) : [...s.kept_reports, m];
-                        await onSave({ ...s, kept_reports: k }); say(kept ? 'Marcado como pendente.' : 'Relatório marcado como guardado.');
-                      }}>{kept ? 'Desmarcar guardado' : 'Marquei como guardado'}</button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </OSec>
 
-        <h3>Declaração anual (DASN-SIMEI) de {dasnYear}</h3>
-        <div className="card">
-          <p className="small">Entrega até 31 de maio de {yr}, mesmo sem faturamento. Atraso gera multa.</p>
-          {cov.kind === 'none' && <p className="small warn-note">Você começou a anotar no app em {cov.since ? monthName(cov.since) : yr}. A declaração de {dasnYear} sai dos seus controles de antes; os totais abaixo ficam zerados.</p>}
-          {cov.kind === 'partial' && cov.since && <p className="small warn-note">O app tem vendas a partir de {monthName(cov.since)}. Some o que faturou antes disso em {dasnYear} para chegar ao total da declaração.</p>}
-          <div className="kv"><span>Receita bruta total{cov.kind === 'partial' ? ' (anotada no app)' : ''}</span><b className="money">{fmt(ann.total)}</b></div>
+        <OSec open={sec === 'dasn'} onToggle={() => tog('dasn')} title={`Declaração anual de ${dasnYear}`} tone={!inSeason ? 'muted' : dasnDone ? 'ok' : 'warn'}
+          status={!inSeason ? `Entrega de janeiro a 31/05/${dasnYear + 1} · até agora ${fmt0(ann.total)}` : dasnDone ? 'Entregue' : `Entregar até 31/05/${dasnYear + 1} · ${fmt0(ann.total)}`}>
+          <p className="small muted" style={{ marginTop: 0 }}>DASN-SIMEI: obrigatória mesmo sem faturamento. Atraso gera multa.{!inSeason && ` Os números de ${dasnYear} vão se somando aqui; a entrega abre em janeiro.`}</p>
+          {!inSeason && !s.dasn_done.includes(yr - 1) && coverage(txs, yr - 1, s).kind !== 'none' && <p className="small warn-note">Ainda não entregou a de {yr - 1}? Entregue o quanto antes no portal: a multa cresce a cada mês.</p>}
+          {cov.kind === 'none' && <p className="small warn-note">Você começou a anotar em {cov.since ? monthName(cov.since) : yr}. Use seus controles de {dasnYear}; aqui fica zerado.</p>}
+          {cov.kind === 'partial' && cov.since && <p className="small warn-note">O app tem vendas a partir de {monthName(cov.since)}. Some o que vendeu antes disso.</p>}
+          <div className="kv"><span>Receita bruta total{cov.kind === 'partial' ? ' (no app)' : ''}{!inSeason ? ' até agora' : ''}</span><b className="money">{fmt(ann.total)}</b></div>
           <div className="kv"><span>Comércio e indústria</span><b className="money">{fmt(ann.comInd + (ann.before && s.activity !== 'servicos' ? ann.before : 0))}</b></div>
           <div className="kv"><span>Serviços</span><b className="money">{fmt(ann.serv + (ann.before && s.activity === 'servicos' ? ann.before : 0))}</b></div>
           <label className="check" style={{ marginTop: 10 }}><input type="checkbox" checked={s.has_employee} onChange={(e) => onSave({ ...s, has_employee: e.target.checked })} /> Tive empregado no ano</label>
-          <p className="small muted" style={{ marginTop: 10 }}>O app não envia a declaração. Entre no Portal do Simples Nacional ou no App MEI com sua conta gov.br e informe esses números.</p>
+          <p className="small muted" style={{ marginTop: 10 }}>Informe esses números no Portal do Simples ou no App MEI, com sua conta gov.br.</p>
           <div className="row" style={{ marginTop: 6 }}>
-            <a className="btn" href={PORTAL_SIMPLES} target="_blank" rel="noreferrer">Abrir o Portal do Simples</a>
-            <button className="btn primary" onClick={async () => {
-              const done = s.dasn_done.includes(dasnYear);
-              await onSave({ ...s, dasn_done: done ? s.dasn_done.filter((y) => y !== dasnYear) : [...s.dasn_done, dasnYear] });
-              say(done ? 'Marcada como pendente.' : 'Declaração marcada como entregue.');
-            }}>{s.dasn_done.includes(dasnYear) ? 'Desmarcar entregue' : 'Já entreguei'}</button>
+            <a className="btn" href={PORTAL_SIMPLES} target="_blank" rel="noreferrer">Abrir o portal</a>
+            {inSeason && <button className="btn primary" onClick={async () => {
+              await onSave({ ...s, dasn_done: dasnDone ? s.dasn_done.filter((y) => y !== dasnYear) : [...s.dasn_done, dasnYear] });
+              say(dasnDone ? 'Marcada como pendente.' : 'Declaração marcada como entregue.');
+            }}>{dasnDone ? 'Desmarcar' : 'Já entreguei'}</button>}
           </div>
-        </div>
+        </OSec>
 
-        <h3>Acompanhar o limite de faturamento (opcional)</h3>
-        <div className="card">
+        <OSec open={sec === 'lim'} onToggle={() => tog('lim')} title={`Limite de faturamento de ${yr}`} tone={limNow === null ? 'muted' : limNow >= 80 ? 'warn' : 'ok'}
+          status={limNow === null ? 'Desligado (opcional)' : `${limNow}% usado de ${fmt0(yearLimit(yr, s.limit_year === yr ? s.opened_month : null))}`}>
           <div className="toggle" style={{ borderTop: 0, paddingTop: 0 }}>
-            <div className="t"><b>Mostrar quanto do limite já usei</b><span>Aparece no resumo do mês, com aviso a partir de 80%.</span></div>
+            <div className="t"><b>Acompanhar o limite</b><span>Mostra no resumo do mês, com aviso a partir de 80%.</span></div>
             <button className="switch" role="switch" aria-checked={limOn} aria-label="Acompanhar o limite" onClick={() => setLimOn(!limOn)} />
           </div>
           {limOn && (
             <div className="stack" style={{ gap: 14, marginTop: 8 }}>
-              <label className="field">Quanto o MEI já faturou em {yr} antes de usar o app?
-                <span className="hint">Some as vendas de janeiro até começar a anotar aqui. Pode ser um valor aproximado.</span>
+              <label className="field">Quanto faturou em {yr} antes de usar o app?
+                <span className="hint">Pode ser aproximado.</span>
                 <MoneyInput value={before} onChange={setBefore} allowEmpty />
               </label>
               <label className="check"><input type="checkbox" checked={openedThisYear} onChange={(e) => setOpenedThisYear(e.target.checked)} /> Abri o MEI em {yr}</label>
               {openedThisYear && (
                 <label className="field">Mês de abertura
-                  <span className="hint">No ano de abertura, o limite é proporcional aos meses de atividade.</span>
+                  <span className="hint">No primeiro ano, o limite é proporcional.</span>
                   <select value={openedMonth} onChange={(e) => setOpenedMonth(Number(e.target.value))}>
                     {['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'].map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
                   </select>
                 </label>
               )}
-              <p className="small muted">Limite de {yr}: {fmt0(yearLimit(yr, openedThisYear ? openedMonth : null))}{openedThisYear ? ' (proporcional)' : ''}, pela {rule.source}.{nx ? ` Em ${nx.from_year}, o teto passa para ${fmt0(nx.limit_cents)} (${nx.source}).` : ''}</p>
+              <p className="small muted" style={{ margin: 0 }}>Limite: {fmt0(yearLimit(yr, openedThisYear ? openedMonth : null))}{openedThisYear ? ' (proporcional)' : ''}, pela {rule.source}.{nx ? ` Em ${nx.from_year}: ${fmt0(nx.limit_cents)}.` : ''}</p>
             </div>
           )}
           <button className="btn primary" style={{ marginTop: 12 }} onClick={async () => {
             await onSave({ ...s, track_limit: limOn, limit_year: yr, revenue_before_cents: limOn ? before ?? 0 : 0, opened_month: limOn && openedThisYear ? openedMonth : null });
             say(limOn ? 'Acompanhamento do limite ligado.' : 'Acompanhamento do limite desligado.');
           }}>Salvar</button>
-        </div>
+        </OSec>
+
+        <OSec open={sec === 'ativ'} onToggle={() => tog('ativ')} title="Atividade principal" tone="muted" status={ACT_LABEL[s.activity]}>
+          <div className="chips" role="group" aria-label="Atividade principal">
+            {(['comercio', 'industria', 'servicos'] as Activity[]).map((a) => (
+              <button key={a} className="chip" aria-pressed={s.activity === a} onClick={() => onSave({ ...s, activity: a })}>{ACT_LABEL[a]}</button>
+            ))}
+          </div>
+          <p className="small muted" style={{ marginBottom: 0 }}>Já vem marcada ao anotar uma venda. Dá para trocar venda a venda.</p>
+        </OSec>
       </div>
     </>
+  );
+}
+
+// Seção de Obrigações: título e situação sempre visíveis; o detalhe abre ao tocar.
+function OSec({ open, onToggle, title, status, tone, children }: { open: boolean; onToggle: () => void; title: string; status: string; tone: 'ok' | 'warn' | 'muted'; children: React.ReactNode }) {
+  return (
+    <section className={'card osec' + (open ? ' open' : '')}>
+      <button className="osec-head" aria-expanded={open} onClick={onToggle}>
+        <span><b>{title}</b><small className={'tone-' + tone}>{status}</small></span>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && <div className="osec-body">{children}</div>}
+    </section>
   );
 }
 

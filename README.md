@@ -85,3 +85,12 @@ Tudo com a conta do projeto (caixadomeipesquisa@gmail.com), separada de qualquer
 
 - Código: MIT (arquivo `LICENSE`).
 - Protocolo (`docs/protocolo.md`): CC BY 4.0.
+
+
+## Pesquisa: quando liberar o consentimento
+
+Enquanto `NEXT_PUBLIC_RESEARCH_OPEN` não for `1`, o app avisa desde a tela inicial que faz parte de uma pesquisa de mestrado, mas **não pede consentimento nem envia nenhum dado de uso**: a tela "Sobre a pesquisa" diz que a pesquisa ainda não começou. Depois da aprovação no comitê de ética:
+
+1. Publique o termo completo e ponha o endereço em `NEXT_PUBLIC_TCLE_URL`.
+2. Mude `NEXT_PUBLIC_RESEARCH_OPEN` para `1` na Vercel e faça um novo deploy.
+3. Quem já usa o app passa a ver "Participar da pesquisa" em Mais.

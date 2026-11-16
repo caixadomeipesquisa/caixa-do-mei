@@ -249,3 +249,33 @@ nav.tabs { position: sticky; bottom: 0; }
 .top-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .rem-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; border: 1px solid var(--line); background: var(--paper); color: var(--muted); }
 .rem-chip.on { border-color: var(--ok); color: var(--ok); background: var(--biz-soft); }
+
+/* Tela inicial: aviso da pesquisa logo de cara */
+.research-tag { display: inline-block; align-self: flex-start; margin: 8px 0 4px; padding: 4px 10px; border-radius: 999px; background: var(--biz-soft); color: var(--ok); font-size: 12.5px; font-weight: 600; }
+
+/* Mais: lista curta em vez de blocos de texto */
+.more .card { margin-bottom: 12px; }
+.rem-what { margin: 2px 0 8px; }
+.menu { border: 1px solid var(--line); border-radius: 18px; background: var(--paper); overflow: hidden; margin-top: 14px; }
+.menu-row, .menu-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 14px 16px; background: none; border: 0; border-top: 1px solid var(--line); text-align: left; color: var(--ink); font: inherit; }
+.menu > :first-child { border-top: 0; }
+.menu-row span, .menu-note { flex-direction: column; align-items: flex-start; }
+.menu-row span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.menu-row b, .menu-note b { font-weight: 600; font-size: 15px; }
+.menu-row small, .menu-note small { color: var(--muted); font-size: 12.5px; }
+.menu-row svg { color: var(--muted); flex: none; }
+.menu-row.danger b { color: var(--bad); }
+.menu-note { gap: 2px; }
+
+/* Obrigações: seções que abrem e fecham, com a situação visível */
+.osec { padding: 0; margin-top: 12px; overflow: hidden; }
+.osec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 14px 16px; background: none; border: 0; text-align: left; color: var(--ink); font: inherit; }
+.osec-head span { display: flex; flex-direction: column; gap: 2px; }
+.osec-head b { font-size: 15.5px; font-weight: 600; }
+.osec-head small { font-size: 13px; }
+.osec-head svg { color: var(--muted); transition: transform .15s; flex: none; }
+.osec.open .osec-head svg { transform: rotate(180deg); }
+.osec-body { padding: 0 16px 16px; }
+.tone-ok { color: var(--ok); }
+.tone-warn { color: var(--home); }
+.tone-muted { color: var(--muted); }
